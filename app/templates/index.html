@@ -42,6 +42,9 @@
 
         <section class="list-section">
             <h2>アップロード済みの資料</h2>
+            <p class="dictionary-hint">
+                <a href="{{ url_for('dictionary_page') }}" class="text-link">📚 保存した用語を見る</a>
+            </p>
             {% if pdfs %}
                 <table class="pdf-table">
                     <thead>

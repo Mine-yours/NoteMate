@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoteMate | 辞書</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="page-header">
+            <h1>保存した専門用語</h1>
+            <p class="subtitle">各講義で保存した用語の一覧です。</p>
+        </header>
+
+        <div class="button-area">
+            <a href="{{ url_for('index') }}" class="text-link">&laquo; 講義一覧に戻る</a>
+        </div>
+
+        {% if entries %}
+            <ul class="dictionary-list global-dictionary">
+                {% for entry in entries %}
+                    <li class="dictionary-item">
+                        <strong>{{ entry.term }}</strong>
+                        <p>{{ entry.definition }}</p>
+                        <span class="dictionary-saved-at">講義ID: {{ entry.lecture_id }} / 保存日時: {{ entry.saved_at }}</span>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="dictionary-empty">まだ辞書に保存された用語はありません。</p>
+        {% endif %}
+    </div>
+</body>
+</html>
+

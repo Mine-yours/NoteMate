@@ -12,10 +12,14 @@ from app.db import (
     delete_pdf_record,
     get_all_pdfs,
     get_glossary_cache,
+    list_glossary_dictionary,
+    list_note_images,
     get_note_for_lecture,
     get_pdf_by_id,
     insert_pdf,
+    insert_note_image,
     upsert_glossary_cache,
+    upsert_glossary_dictionary_item,
     upsert_note_for_lecture,
     update_pdf_filename,
 )
@@ -41,7 +45,9 @@ except ImportError:  # pragma: no cover
     PdfReader = None
 
 ALLOWED_EXTENSIONS = {".pdf"}
+ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "pdfs")
+NOTE_IMAGE_DIR = os.path.join(app.root_path, "static", "uploads", "note_images")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "models/gemini-2.0-flash")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
@@ -52,6 +58,11 @@ if genai and GOOGLE_API_KEY:
 def _allowed_file(filename: str) -> bool:
     _, ext = os.path.splitext(filename)
     return ext.lower() in ALLOWED_EXTENSIONS
+
+
+def _allowed_image(filename: str) -> bool:
+    _, ext = os.path.splitext(filename)
+    return ext.lower() in ALLOWED_IMAGE_EXTENSIONS
 
 
 def _extract_pdf_text(file_path: str, page: int | None = None) -> str:
@@ -224,7 +235,10 @@ def delete_pdf(lecture_id: str):
     delete_pdf_record(lecture_id)
 
     if file_error:
-        flash(f"資料を削除しましたが、ファイルの削除でエラーが発生しました: {file_error}", "error")
+        flash(
+            f"資料を削除しましたが、ファイルの削除でエラーが発生しました: {file_error}",
+            "error",
+        )
     else:
         flash("講義資料を削除しました。", "success")
 
@@ -253,6 +267,50 @@ def rename_pdf(lecture_id: str):
 
     update_pdf_filename(lecture_id, new_name)
     return jsonify({"lecture_id": lecture_id, "original_filename": new_name})
+
+
+@app.route("/lectures/<lecture_id>/dictionary", methods=["GET", "POST"])
+def glossary_dictionary(lecture_id: str):
+    pdf = get_pdf_by_id(lecture_id)
+    if not pdf:
+        return jsonify({"error": "資料が見つかりませんでした。"}), 404
+
+    if request.method == "GET":
+        entries = list_glossary_dictionary(lecture_id)
+        return jsonify({"items": entries})
+
+    payload = request.get_json(silent=True) or {}
+    term = (payload.get("term") or "").strip()
+    definition = (payload.get("definition") or "").strip()
+    context = (payload.get("context") or "").strip()
+
+    if not term:
+        return jsonify({"error": "用語が入力されていません。"}), 400
+
+    if not definition:
+        return jsonify({"error": "解説が入力されていません。"}), 400
+
+    dictionary_id = uuid.uuid4().hex
+    saved_at = datetime.now()
+    upsert_glossary_dictionary_item(
+        dictionary_id,
+        lecture_id,
+        term,
+        definition,
+        context or None,
+        saved_at,
+    )
+
+    item = {
+        "dictionary_id": dictionary_id,
+        "lecture_id": lecture_id,
+        "term": term,
+        "definition": definition,
+        "context": context,
+        "saved_at": saved_at.isoformat(),
+    }
+
+    return jsonify({"item": item})
 
 
 @app.route("/lectures/<lecture_id>/glossary")
@@ -315,3 +373,55 @@ def note_api(lecture_id: str):
 
     upsert_note_for_lecture(lecture_id, str(content), datetime.now())
     return jsonify({"status": "ok"})
+
+
+@app.route("/lectures/<lecture_id>/note/images", methods=["GET", "POST"])
+def note_images_api(lecture_id: str):
+    pdf = get_pdf_by_id(lecture_id)
+    if not pdf:
+        return jsonify({"error": "資料が見つかりませんでした。"}), 404
+
+    if request.method == "GET":
+        images = list_note_images(lecture_id)
+        for image in images:
+            image["url"] = url_for("static", filename=f"uploads/note_images/{image['stored_filename']}")
+            image["markdown"] = f"![{image['original_filename']}]({image['url']})"
+        return jsonify({"images": images})
+
+    file_storage = request.files.get("image")
+    if not file_storage or file_storage.filename == "":
+        return jsonify({"error": "画像ファイルを選択してください。"}), 400
+
+    original_filename = secure_filename(file_storage.filename)
+    if not _allowed_image(original_filename):
+        allowed = ", ".join(sorted(ALLOWED_IMAGE_EXTENSIONS))
+        return jsonify({"error": f"アップロードできる拡張子は {allowed} です。"}), 400
+
+    os.makedirs(NOTE_IMAGE_DIR, exist_ok=True)
+    image_id = uuid.uuid4().hex
+    _, ext = os.path.splitext(original_filename)
+    stored_filename = f"{image_id}{ext.lower()}"
+    save_path = os.path.join(NOTE_IMAGE_DIR, stored_filename)
+    file_storage.save(save_path)
+
+    uploaded_at = datetime.now()
+    insert_note_image(lecture_id, image_id, original_filename, stored_filename, uploaded_at)
+
+    image_url = url_for("static", filename=f"uploads/note_images/{stored_filename}")
+    markdown = f"![{original_filename}]({image_url})"
+    return jsonify(
+        {
+            "image_id": image_id,
+            "original_filename": original_filename,
+            "stored_filename": stored_filename,
+            "uploaded_at": uploaded_at.isoformat(),
+            "url": image_url,
+            "markdown": markdown,
+        }
+    )
+
+
+@app.route("/dictionary")
+def dictionary_page():
+    entries = list_glossary_dictionary()
+    return render_template("dictionary.html", entries=entries)

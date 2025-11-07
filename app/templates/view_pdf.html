@@ -28,19 +28,20 @@
 
         <div class="viewer-layout">
             <section class="pdf-viewer">
-                <iframe src="{{ pdf_url }}" title="{{ pdf.original_filename }}" width="100%" height="1000" allow="fullscreen"></iframe>
+                <iframe src="{{ pdf_url }}" title="{{ pdf.original_filename }}" width="100%" height="700" allow="fullscreen"></iframe>
                 <p class="viewer-note">表示されない場合はダウンロードして閲覧してください。</p>
             </section>
 
-            <aside class="glossary-panel" data-endpoint="{{ url_for('glossary', lecture_id=pdf.lecture_id) }}" data-note-endpoint="{{ url_for('note_api', lecture_id=pdf.lecture_id) }}" data-lecture-id="{{ pdf.lecture_id }}">
+            <aside class="glossary-panel" data-endpoint="{{ url_for('glossary', lecture_id=pdf.lecture_id) }}" data-note-endpoint="{{ url_for('note_api', lecture_id=pdf.lecture_id) }}" data-note-images-endpoint="{{ url_for('note_images_api', lecture_id=pdf.lecture_id) }}" data-dictionary-endpoint="{{ url_for('glossary_dictionary', lecture_id=pdf.lecture_id) }}" data-lecture-id="{{ pdf.lecture_id }}">
                 <div class="glossary-header">
                     <h2>学習サポート</h2>
-                    <p class="glossary-hint">AI解説と自分用メモを切り替えて活用できます。</p>
+
                 </div>
 
                 <div class="glossary-tabs">
                     <button type="button" class="tab-button active" data-target="glossary">専門用語</button>
                     <button type="button" class="tab-button" data-target="notes">ノート</button>
+                    <button type="button" class="tab-button" data-target="dictionary">辞書</button>
                 </div>
 
                 <div class="tab-content glossary-content active" data-content="glossary">
@@ -76,6 +77,7 @@
                                 <button type="button" class="notes-tool" data-md="italic" title="斜体">I</button>
                                 <button type="button" class="notes-tool" data-md="underline" title="下線">U</button>
                                 <button type="button" class="notes-tool" data-md="highlight" title="ハイライト">HL</button>
+                                <button type="button" class="notes-tool" data-md="linebreak" title="改行">↵</button>
                             </div>
                             <div class="notes-toolbar-group">
                                 <button type="button" class="notes-tool" data-block="heading1" title="見出し1">H1</button>
@@ -85,11 +87,11 @@
                             </div>
                             <div class="notes-toolbar-group">
                                 <label class="notes-color-control" title="文字色">
-                                    <span>文字色</span>
+                                    <span>Color</span>
                                     <input type="color" class="notes-color-picker" value="#0f2742">
                                 </label>
                                 <label class="notes-size-control" title="文字サイズ">
-                                    <span>文字サイズ</span>
+                                    <span>Size</span>
                                     <select class="notes-size-select">
                                         <option value="">標準</option>
                                         <option value="14">14px</option>
@@ -99,9 +101,17 @@
                                         <option value="24">24px</option>
                                     </select>
                                 </label>
+                                <label class="notes-image-upload" title="画像を添付">
+                                    <span>Image</span>
+                                    <input type="file" class="notes-image-input" accept="image/*">
+                                </label>
                             </div>
                         </div>
                         <textarea id="notes-editor" class="notes-editor" placeholder="気づきや疑問点をメモしておきましょう。"></textarea>
+                        <div class="notes-attachments">
+                            <h3>添付画像</h3>
+                            <ul class="notes-attachment-list"></ul>
+                        </div>
                         <p class="notes-status" aria-live="polite"></p>
                     </div>
                     <div class="notes-pane notes-pane-preview" data-pane="notes-preview-pane">
@@ -112,6 +122,16 @@
                             <div class="notes-preview-body"></div>
                         </div>
                     </div>
+                </div>
+
+                <div class="tab-content dictionary-content" data-content="dictionary">
+                    <div class="dictionary-header">
+                        <h3>保存した用語</h3>
+                        <p class="dictionary-hint">気になった用語をストックして復習に活用しましょう。</p>
+                    </div>
+                    <ul class="dictionary-list"></ul>
+                    <p class="dictionary-empty hidden">まだ保存された用語はありません。</p>
+                    <p class="dictionary-error hidden"></p>
                 </div>
             </aside>
         </div>
@@ -162,6 +182,8 @@
 
             const endpoint = panel.dataset.endpoint;
             const noteEndpoint = panel.dataset.noteEndpoint;
+            const noteImagesEndpoint = panel.dataset.noteImagesEndpoint;
+            const dictionaryEndpoint = panel.dataset.dictionaryEndpoint;
             const button = panel.querySelector('.glossary-button');
             const status = panel.querySelector('.glossary-status');
             const list = panel.querySelector('.glossary-list');
@@ -170,12 +192,18 @@
             const cache = {};
             const tabs = panel.querySelectorAll('.tab-button');
             const tabContents = panel.querySelectorAll('.tab-content');
+            const dictionaryList = panel.querySelector('.dictionary-list');
+            const dictionaryEmpty = panel.querySelector('.dictionary-empty');
+            const dictionaryError = panel.querySelector('.dictionary-error');
+            const savedDictionaryTerms = new Map();
             const notesEditor = panel.querySelector('.notes-editor');
             const notesStatus = panel.querySelector('.notes-status');
             const notesToolbar = panel.querySelector('.notes-toolbar');
             const colorPicker = panel.querySelector('.notes-color-picker');
             const sizeSelect = panel.querySelector('.notes-size-select');
+            const imageInput = panel.querySelector('.notes-image-input');
             const notesPreviewBody = panel.querySelector('.notes-preview-body');
+            const attachmentList = panel.querySelector('.notes-attachment-list');
             const subtabButtons = panel.querySelectorAll('.notes-subtab-button');
             const notePanes = panel.querySelectorAll('.notes-pane');
 
@@ -183,11 +211,67 @@
                 element.classList.toggle('hidden', !show);
             };
 
+            const normalizeTerm = (value) => (value || '').trim().toLowerCase();
+
+            const makeDictionaryKey = (term, definition) => normalizeTerm(`${term || ''}::${definition || ''}`);
+
+            const setDictionaryTerm = (item) => {
+                const key = makeDictionaryKey(item.term, item.definition);
+                if (!key) {
+                    return;
+                }
+                savedDictionaryTerms.set(key, item);
+            };
+
+            const isTermSaved = (term, definition) => savedDictionaryTerms.has(makeDictionaryKey(term, definition));
+
+            const updateSaveButtonState = (buttonElement, saved) => {
+                if (!buttonElement) {
+                    return;
+                }
+                buttonElement.disabled = !!saved;
+                buttonElement.textContent = saved ? '保存済み' : '辞書に保存';
+                buttonElement.classList.toggle('saved', !!saved);
+            };
+
+            const syncGlossarySaveButtons = () => {
+                if (!list) {
+                    return;
+                }
+                const buttons = list.querySelectorAll('.glossary-save-button');
+                buttons.forEach((buttonElement) => {
+                    const key = buttonElement.dataset.dictionaryKey || '';
+                    const saved = key ? savedDictionaryTerms.has(key) : false;
+                    updateSaveButtonState(buttonElement, saved);
+                });
+            };
+
             const getActiveKey = () => {
                 if (!pageSelect) {
                     return 'all';
                 }
                 return pageSelect.value || 'all';
+            };
+
+            const formatDateTime = (value) => {
+                if (!value) {
+                    return '';
+                }
+                try {
+                    const date = new Date(value);
+                    if (!Number.isNaN(date.getTime())) {
+                        return new Intl.DateTimeFormat('ja-JP', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                        }).format(date);
+                    }
+                } catch (err) {
+                    console.warn('日時の整形に失敗しました', err);
+                }
+                return value;
             };
 
             const renderMarkdown = (source) => {
@@ -219,24 +303,150 @@
                 notesPreviewBody.innerHTML = renderMarkdown(text);
             };
 
+            const renderNoteImages = (images) => {
+                if (!attachmentList) {
+                    return;
+                }
+                if (!images || images.length === 0) {
+                    attachmentList.innerHTML = '<li class="notes-preview-empty">まだ添付画像がありません。</li>';
+                    return;
+                }
+                attachmentList.innerHTML = '';
+                images.forEach((image) => {
+                    const li = document.createElement('li');
+                    li.className = 'attachment-item';
+                    const thumb = document.createElement('img');
+                    thumb.src = image.url;
+                    thumb.alt = image.original_filename;
+                    thumb.loading = 'lazy';
+                    const meta = document.createElement('div');
+                    meta.className = 'attachment-meta';
+                    const name = document.createElement('span');
+                    name.textContent = image.original_filename;
+                    const insertButton = document.createElement('button');
+                    insertButton.type = 'button';
+                    insertButton.className = 'attachment-insert';
+                    insertButton.textContent = '挿入';
+                    insertButton.addEventListener('click', () => {
+                        if (!notesEditor) return;
+                        const markdown = image.markdown || `![${image.original_filename}](${image.url})`;
+                        const start = notesEditor.selectionStart;
+                        const end = notesEditor.selectionEnd;
+                        notesEditor.setRangeText(`\n${markdown}\n`, start, end, 'end');
+                        notesEditor.focus();
+                        notesEditor.dispatchEvent(new Event('input', { bubbles: true }));
+                    });
+                    meta.appendChild(name);
+                    meta.appendChild(insertButton);
+                    li.appendChild(thumb);
+                    li.appendChild(meta);
+                    attachmentList.appendChild(li);
+                });
+            };
+
+            const loadNoteImages = async () => {
+                if (!noteImagesEndpoint || !attachmentList) {
+                    return;
+                }
+                try {
+                    const response = await fetch(noteImagesEndpoint, { method: 'GET' });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || '添付画像を取得できませんでした。');
+                    }
+                    const images = (data.images || []).map((img) => ({
+                        ...img,
+                        markdown: img.markdown || `![${img.original_filename}](${img.url})`,
+                    }));
+                    renderNoteImages(images);
+                } catch (err) {
+                    console.warn(err);
+                    attachmentList.innerHTML = '<li class="notes-preview-empty">添付画像を読み込めませんでした。</li>';
+                }
+            };
+
             const renderItems = (items) => {
                 list.innerHTML = '';
                 items.forEach((item) => {
                     const li = document.createElement('li');
+                    li.className = 'glossary-item';
+
+                    const body = document.createElement('div');
+                    body.className = 'glossary-item-body';
+
                     const term = document.createElement('strong');
                     term.textContent = item.term || '（不明な用語）';
-                    li.appendChild(term);
+                    body.appendChild(term);
 
                     if (item.definition) {
                         const definition = document.createElement('p');
                         definition.textContent = item.definition;
-                        li.appendChild(definition);
+                        body.appendChild(definition);
                     }
 
                     if (item.context) {
                         const context = document.createElement('span');
                         context.textContent = item.context;
-                        li.appendChild(context);
+                        body.appendChild(context);
+                    }
+
+                    li.appendChild(body);
+
+                    if (dictionaryEndpoint) {
+                        const actions = document.createElement('div');
+                        actions.className = 'glossary-item-actions';
+                        const saveButton = document.createElement('button');
+                        saveButton.type = 'button';
+                        saveButton.className = 'glossary-save-button';
+                        const dictionaryKey = makeDictionaryKey(item.term, item.definition);
+                        saveButton.dataset.dictionaryKey = dictionaryKey;
+                        updateSaveButtonState(saveButton, isTermSaved(item.term, item.definition));
+                        saveButton.addEventListener('click', async () => {
+                            if (!dictionaryEndpoint) {
+                                window.alert('辞書機能が利用できません。');
+                                return;
+                            }
+                            if (saveButton.disabled) {
+                                return;
+                            }
+                            const previousLabel = saveButton.textContent;
+                            saveButton.disabled = true;
+                            saveButton.textContent = '保存中…';
+                            try {
+                                const response = await fetch(dictionaryEndpoint, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                        term: item.term || '',
+                                        definition: item.definition || '',
+                                        context: item.context || '',
+                                    }),
+                                });
+                                const data = await response.json();
+                                if (!response.ok) {
+                                    throw new Error(data.error || '辞書への保存に失敗しました。');
+                                }
+                                const savedItem = data.item || {
+                                    term: item.term || '',
+                                    definition: item.definition || '',
+                                    context: item.context || '',
+                                    saved_at: new Date().toISOString(),
+                                };
+                                setDictionaryTerm(savedItem);
+                                updateSaveButtonState(saveButton, true);
+                                await refreshDictionary();
+                                saveButton.textContent = '保存済み';
+                            } catch (err) {
+                                saveButton.disabled = false;
+                                saveButton.textContent = previousLabel;
+                                window.alert(err.message || '辞書への保存に失敗しました。');
+                                return;
+                            }
+                        });
+                        actions.appendChild(saveButton);
+                        li.appendChild(actions);
                     }
 
                     list.appendChild(li);
@@ -249,6 +459,78 @@
                 li.className = 'glossary-placeholder';
                 li.textContent = message;
                 list.appendChild(li);
+            };
+
+            const updateDictionaryEmptyState = (hasItems) => {
+                if (!dictionaryEmpty) {
+                    return;
+                }
+                toggle(dictionaryEmpty, !hasItems);
+            };
+
+            const renderDictionaryItems = (items) => {
+                if (!dictionaryList) {
+                    return;
+                }
+                dictionaryList.innerHTML = '';
+
+                if (!items || items.length === 0) {
+                    updateDictionaryEmptyState(false);
+                    return;
+                }
+
+                updateDictionaryEmptyState(true);
+
+                items.forEach((item) => {
+                    const li = document.createElement('li');
+                    li.className = 'dictionary-item';
+
+                    const term = document.createElement('strong');
+                    term.textContent = item.term || '（不明な用語）';
+                    li.appendChild(term);
+
+                    if (item.definition) {
+                        const definition = document.createElement('p');
+                        definition.textContent = item.definition;
+                        li.appendChild(definition);
+                    }
+
+                    if (item.saved_at) {
+                        const meta = document.createElement('span');
+                        meta.className = 'dictionary-saved-at';
+                        meta.textContent = `保存日時: ${formatDateTime(item.saved_at)}`;
+                        li.appendChild(meta);
+                    }
+
+                    dictionaryList.appendChild(li);
+                });
+            };
+
+            const refreshDictionary = async () => {
+                if (!dictionaryEndpoint || !dictionaryList) {
+                    return;
+                }
+                try {
+                    const response = await fetch(dictionaryEndpoint, { method: 'GET' });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || '辞書を取得できませんでした。');
+                    }
+                    const items = Array.isArray(data.items) ? data.items : [];
+                    savedDictionaryTerms.clear();
+                    items.forEach(setDictionaryTerm);
+                    renderDictionaryItems(items);
+                    if (dictionaryError) {
+                        dictionaryError.textContent = '';
+                        dictionaryError.classList.add('hidden');
+                    }
+                    syncGlossarySaveButtons();
+                } catch (err) {
+                    if (dictionaryError) {
+                        dictionaryError.textContent = err.message || '辞書を読み込めませんでした。';
+                        dictionaryError.classList.remove('hidden');
+                    }
+                }
             };
 
             const tryRenderCache = (key) => {
@@ -310,6 +592,7 @@
             if (!tryRenderCache(initialKey)) {
                 showPlaceholder('専門用語を生成するとここに表示されます。');
             }
+            refreshDictionary();
 
             const activateTab = (target) => {
                 tabs.forEach((tab) => {
@@ -374,6 +657,14 @@
                             case 'highlight':
                                 surroundSelection('<mark>', '</mark>');
                                 break;
+                            case 'linebreak': {
+                                const start = notesEditor.selectionStart;
+                                const end = notesEditor.selectionEnd;
+                                notesEditor.setRangeText('<br>\n', start, end, 'end');
+                                notesEditor.focus();
+                                notesEditor.dispatchEvent(new Event('input', { bubbles: true }));
+                                break;
+                            }
                             default:
                         }
                         return;
@@ -514,6 +805,7 @@
                 };
 
                 loadNoteFromServer();
+                loadNoteImages();
 
                 let saveTimer = null;
                 notesEditor.addEventListener('input', () => {
@@ -531,6 +823,48 @@
                             console.warn(err);
                         }
                     }, 500);
+                });
+            }
+
+            if (imageInput) {
+                imageInput.addEventListener('change', async (event) => {
+                    const input = event.target;
+                    if (!(input instanceof HTMLInputElement) || !input.files || input.files.length === 0) {
+                        return;
+                    }
+                    if (!noteImagesEndpoint) {
+                        window.alert('画像アップロードのエンドポイントが見つかりません。');
+                        return;
+                    }
+                    const file = input.files[0];
+                    const formData = new FormData();
+                    formData.append('image', file);
+                    try {
+                        const response = await fetch(noteImagesEndpoint, {
+                            method: 'POST',
+                            body: formData,
+                        });
+                        const data = await response.json();
+                        if (!response.ok) {
+                            throw new Error(data.error || '画像のアップロードに失敗しました。');
+                        }
+                        if (attachmentList) {
+                            await loadNoteImages();
+                        }
+                        if (notesEditor) {
+                            const markdown = data.markdown || `![${data.original_filename}](${data.url})`;
+                            const start = notesEditor.selectionStart;
+                            const end = notesEditor.selectionEnd;
+                            notesEditor.setRangeText(`\n${markdown}\n`, start, end, 'end');
+                            notesEditor.focus();
+                            notesEditor.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        notesStatus.textContent = '画像をアップロードし、ノートへ挿入しました。';
+                    } catch (err) {
+                        window.alert(err.message || '画像のアップロードに失敗しました。');
+                    } finally {
+                        input.value = '';
+                    }
                 });
             }
         })();
