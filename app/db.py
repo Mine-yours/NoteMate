@@ -71,16 +71,21 @@ def create_table() -> None:
 
     con.execute(
         """
-        CREATE TABLE IF NOT EXISTS lecture_glossary_dictionary (
+        CREATE TABLE IF NOT EXISTS lecture_chat_messages (
+            message_id  TEXT PRIMARY KEY,
             lecture_id  TEXT NOT NULL,
-            term        TEXT NOT NULL,
-            definition  TEXT,
-            context     TEXT,
-            saved_at    TEXT NOT NULL,
-            PRIMARY KEY (lecture_id, term)
+            role        TEXT NOT NULL,
+            content     TEXT NOT NULL,
+            created_at  TEXT NOT NULL,
+            category    TEXT NOT NULL DEFAULT 'free'
         )
         """
     )
+    try:
+        con.execute("ALTER TABLE lecture_chat_messages ADD COLUMN category TEXT NOT NULL DEFAULT 'free'")
+    except sqlite3.OperationalError:
+        # 既に列が存在する場合は無視
+        pass
     con.commit()
     con.close()
 
@@ -277,6 +282,87 @@ def list_note_images(lecture_id: str) -> List[Dict[str, str]]:
     ]
 
 
+def insert_chat_message(
+    lecture_id: str,
+    message_id: str,
+    role: str,
+    content: str,
+    created_at: datetime,
+    category: str = "free",
+) -> None:
+    con = sqlite3.connect(DATABASE)
+    con.execute(
+        """
+        INSERT INTO lecture_chat_messages (message_id, lecture_id, role, content, created_at, category)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (message_id, lecture_id, role, content, created_at.isoformat(), category),
+    )
+    con.commit()
+    con.close()
+
+
+def delete_chat_messages(lecture_id: str, category: Optional[str] = None) -> None:
+    con = sqlite3.connect(DATABASE)
+    if category:
+        con.execute(
+            """
+            DELETE FROM lecture_chat_messages
+            WHERE lecture_id = ? AND category = ?
+            """,
+            (lecture_id, category),
+        )
+    else:
+        con.execute(
+            """
+            DELETE FROM lecture_chat_messages
+            WHERE lecture_id = ?
+            """,
+            (lecture_id,),
+        )
+    con.commit()
+    con.close()
+
+
+def list_chat_messages(
+    lecture_id: str,
+    limit: Optional[int] = None,
+    category: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    con = sqlite3.connect(DATABASE)
+    cursor = con.cursor()
+    query = (
+        """
+        SELECT message_id, lecture_id, role, content, created_at, category
+        FROM lecture_chat_messages
+        WHERE lecture_id = ?
+        """
+    )
+    params: List[object] = [lecture_id]
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    query += " ORDER BY datetime(created_at) ASC"
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    con.close()
+
+    if limit is not None:
+        rows = rows[-limit:]
+
+    return [
+        {
+            "message_id": row[0],
+            "lecture_id": row[1],
+            "role": row[2],
+            "content": row[3],
+            "created_at": row[4],
+            "category": row[5],
+        }
+        for row in rows
+    ]
+
+
 def upsert_glossary_dictionary_item(
     dictionary_id: str,
     lecture_id: str,
@@ -299,6 +385,22 @@ def upsert_glossary_dictionary_item(
     )
     con.commit()
     con.close()
+
+
+def delete_glossary_dictionary_item(dictionary_id: str) -> bool:
+    con = sqlite3.connect(DATABASE)
+    cursor = con.cursor()
+    cursor.execute(
+        """
+        DELETE FROM glossary_dictionary
+        WHERE dictionary_id = ?
+        """,
+        (dictionary_id,),
+    )
+    deleted = cursor.rowcount > 0
+    con.commit()
+    con.close()
+    return deleted
 
 
 def list_glossary_dictionary(lecture_id: Optional[str] = None) -> List[Dict[str, str]]:

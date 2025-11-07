@@ -5,10 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NoteMate | 辞書</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/NoteMate_logo.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/NoteMate_logo.png') }}">
 </head>
 <body>
     <div class="container">
         <header class="page-header">
+            <div class="brand">
+                <img src="{{ url_for('static', filename='images/NoteMate_logo_text_trans.png') }}" alt="NoteMateロゴ" class="brand-logo">
+            </div>
             <h1>保存した専門用語</h1>
             <p class="subtitle">各講義で保存した用語の一覧です。</p>
         </header>
@@ -20,17 +25,85 @@
         {% if entries %}
             <ul class="dictionary-list global-dictionary">
                 {% for entry in entries %}
-                    <li class="dictionary-item">
+                    <li class="dictionary-item" data-dictionary-id="{{ entry.dictionary_id }}">
                         <strong>{{ entry.term }}</strong>
                         <p>{{ entry.definition }}</p>
+                        {% if entry.context %}
+                            <span class="dictionary-context">{{ entry.context }}</span>
+                        {% endif %}
                         <span class="dictionary-saved-at">講義ID: {{ entry.lecture_id }} / 保存日時: {{ entry.saved_at }}</span>
+                        <div class="dictionary-item-actions">
+                            <button type="button"
+                                    class="dictionary-delete-button"
+                                    data-dictionary-id="{{ entry.dictionary_id }}"
+                                    data-term="{{ entry.term }}"
+                                    data-definition="{{ entry.definition }}">
+                                削除
+                            </button>
+                        </div>
                     </li>
                 {% endfor %}
             </ul>
+            <p class="dictionary-empty hidden">まだ辞書に保存された用語はありません。</p>
         {% else %}
             <p class="dictionary-empty">まだ辞書に保存された用語はありません。</p>
         {% endif %}
     </div>
+
+    <script>
+        (function () {
+            const deleteButtons = document.querySelectorAll('.dictionary-delete-button');
+            const emptyMessage = document.querySelector('.dictionary-empty');
+
+            const updateEmptyState = () => {
+                const hasItems = !!document.querySelector('.dictionary-item');
+                if (!emptyMessage) {
+                    return;
+                }
+                if (hasItems) {
+                    emptyMessage.classList.add('hidden');
+                } else {
+                    emptyMessage.classList.remove('hidden');
+                }
+            };
+
+            deleteButtons.forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const dictionaryId = button.dataset.dictionaryId;
+                    if (!dictionaryId) {
+                        return;
+                    }
+                    const confirmed = window.confirm('この用語を辞書から削除しますか？');
+                    if (!confirmed) {
+                        return;
+                    }
+                    const listItem = button.closest('.dictionary-item');
+                    const previousLabel = button.textContent;
+                    button.disabled = true;
+                    button.textContent = '削除中...';
+
+                    try {
+                        const response = await fetch(`/dictionary/${encodeURIComponent(dictionaryId)}`, {
+                            method: 'DELETE',
+                        });
+                        const data = await response.json();
+                        if (!response.ok) {
+                            throw new Error(data.error || '辞書の削除に失敗しました。');
+                        }
+                        if (listItem) {
+                            listItem.remove();
+                        }
+                        updateEmptyState();
+                    } catch (err) {
+                        window.alert(err.message || '辞書の削除に失敗しました。');
+                        button.disabled = false;
+                        button.textContent = previousLabel;
+                        return;
+                    }
+                });
+            });
+        })();
+    </script>
 </body>
 </html>
 

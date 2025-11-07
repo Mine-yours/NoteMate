@@ -32,7 +32,13 @@
                 <p class="viewer-note">表示されない場合はダウンロードして閲覧してください。</p>
             </section>
 
-            <aside class="glossary-panel" data-endpoint="{{ url_for('glossary', lecture_id=pdf.lecture_id) }}" data-note-endpoint="{{ url_for('note_api', lecture_id=pdf.lecture_id) }}" data-note-images-endpoint="{{ url_for('note_images_api', lecture_id=pdf.lecture_id) }}" data-dictionary-endpoint="{{ url_for('glossary_dictionary', lecture_id=pdf.lecture_id) }}" data-lecture-id="{{ pdf.lecture_id }}">
+            <aside class="glossary-panel"
+                   data-endpoint="{{ url_for('glossary', lecture_id=pdf.lecture_id) }}"
+                   data-note-endpoint="{{ url_for('note_api', lecture_id=pdf.lecture_id) }}"
+                   data-chat-endpoint="{{ url_for('chat_api', lecture_id=pdf.lecture_id) }}"
+                   data-note-images-endpoint="{{ url_for('note_images_api', lecture_id=pdf.lecture_id) }}"
+                   data-dictionary-endpoint="{{ url_for('glossary_dictionary', lecture_id=pdf.lecture_id) }}"
+                   data-lecture-id="{{ pdf.lecture_id }}">
                 <div class="glossary-header">
                     <h2>学習サポート</h2>
 
@@ -41,6 +47,7 @@
                 <div class="glossary-tabs">
                     <button type="button" class="tab-button active" data-target="glossary">専門用語</button>
                     <button type="button" class="tab-button" data-target="notes">ノート</button>
+                    <button type="button" class="tab-button" data-target="chat">チャット</button>
                     <button type="button" class="tab-button" data-target="dictionary">辞書</button>
                 </div>
 
@@ -66,8 +73,8 @@
 
                 <div class="tab-content notes-content" data-content="notes">
                     <div class="notes-subtabs">
-                        <button type="button" class="notes-subtab-button active" data-target="notes-editor-pane">Note</button>
-                        <button type="button" class="notes-subtab-button" data-target="notes-preview-pane">Preview</button>
+                        <button type="button" class="notes-subtab-button active" data-target="notes-editor-pane">ノート</button>
+                        <button type="button" class="notes-subtab-button" data-target="notes-preview-pane">プレビュー</button>
                     </div>
                     <div class="notes-pane notes-pane-editor active" data-pane="notes-editor-pane">
                         <label class="notes-label" for="notes-editor">講義ノート</label>
@@ -87,11 +94,11 @@
                             </div>
                             <div class="notes-toolbar-group">
                                 <label class="notes-color-control" title="文字色">
-                                    <span>Color</span>
+                                    <span>文字色</span>
                                     <input type="color" class="notes-color-picker" value="#0f2742">
                                 </label>
                                 <label class="notes-size-control" title="文字サイズ">
-                                    <span>Size</span>
+                                    <span>文字サイズ</span>
                                     <select class="notes-size-select">
                                         <option value="">標準</option>
                                         <option value="14">14px</option>
@@ -102,7 +109,7 @@
                                     </select>
                                 </label>
                                 <label class="notes-image-upload" title="画像を添付">
-                                    <span>Image</span>
+                                    <span>画像添付</span>
                                     <input type="file" class="notes-image-input" accept="image/*">
                                 </label>
                             </div>
@@ -117,10 +124,45 @@
                     <div class="notes-pane notes-pane-preview" data-pane="notes-preview-pane">
                         <div class="notes-preview-container">
                             <div class="notes-preview-header">
-                                <span class="notes-preview-title">Preview</span>
+                                <span class="notes-preview-title">プレビュー</span>
                             </div>
                             <div class="notes-preview-body"></div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="tab-content chat-content" data-content="chat">
+                    <div class="chat-tabs">
+                        <button type="button" class="chat-tab-button active" data-target="chat-free" data-category="free">フリーチャット</button>
+                        <button type="button" class="chat-tab-button" data-target="chat-term" data-category="term">単語の解説</button>
+                    </div>
+
+                    <div class="chat-pane active" data-pane="chat-free" data-category="free">
+                        <div class="chat-window">
+                            <ul class="chat-messages"></ul>
+                        </div>
+                        <form class="chat-form">
+                            <textarea class="chat-input" rows="3" placeholder="質問や相談内容を入力してください"></textarea>
+                            <div class="chat-actions">
+                                <button type="button" class="chat-clear-button">履歴を削除</button>
+                                <button type="submit" class="chat-send-button">送信</button>
+                            </div>
+                        </form>
+                        <p class="chat-error hidden"></p>
+                    </div>
+
+                    <div class="chat-pane" data-pane="chat-term" data-category="term">
+                        <div class="chat-window">
+                            <ul class="chat-messages chat-messages-term"></ul>
+                        </div>
+                        <form class="chat-form">
+                            <textarea class="chat-input" rows="3" placeholder="解説してほしい用語やキーワードを入力してください"></textarea>
+                            <div class="chat-actions">
+                                <button type="button" class="chat-clear-button">履歴を削除</button>
+                                <button type="submit" class="chat-send-button">送信</button>
+                            </div>
+                        </form>
+                        <p class="chat-error hidden"></p>
                     </div>
                 </div>
 
@@ -182,6 +224,7 @@
 
             const endpoint = panel.dataset.endpoint;
             const noteEndpoint = panel.dataset.noteEndpoint;
+            const chatEndpoint = panel.dataset.chatEndpoint;
             const noteImagesEndpoint = panel.dataset.noteImagesEndpoint;
             const dictionaryEndpoint = panel.dataset.dictionaryEndpoint;
             const button = panel.querySelector('.glossary-button');
@@ -206,6 +249,31 @@
             const attachmentList = panel.querySelector('.notes-attachment-list');
             const subtabButtons = panel.querySelectorAll('.notes-subtab-button');
             const notePanes = panel.querySelectorAll('.notes-pane');
+            const chatTabButtons = panel.querySelectorAll('.chat-tab-button');
+            const chatPanes = panel.querySelectorAll('.chat-pane');
+
+            const getChatCategory = (value) => (value || 'free').trim().toLowerCase();
+
+            const chatStates = new Map();
+            let activeChatCategory = 'free';
+            chatPanes.forEach((pane) => {
+                const category = getChatCategory(pane.dataset.category);
+                if (!category || chatStates.has(category)) {
+                    return;
+                }
+                chatStates.set(category, {
+                    pane,
+                    messagesList: pane.querySelector('.chat-messages'),
+                    form: pane.querySelector('.chat-form'),
+                    input: pane.querySelector('.chat-input'),
+                    error: pane.querySelector('.chat-error'),
+                    clearButton: pane.querySelector('.chat-clear-button'),
+                    currentMessages: [],
+                    loaded: false,
+                    sending: false,
+                    clearing: false,
+                });
+            });
 
             const toggle = (element, show) => {
                 element.classList.toggle('hidden', !show);
@@ -225,6 +293,14 @@
 
             const isTermSaved = (term, definition) => savedDictionaryTerms.has(makeDictionaryKey(term, definition));
 
+            const removeDictionaryTerm = (term, definition) => {
+                const key = makeDictionaryKey(term, definition);
+                if (!key) {
+                    return;
+                }
+                savedDictionaryTerms.delete(key);
+            };
+
             const updateSaveButtonState = (buttonElement, saved) => {
                 if (!buttonElement) {
                     return;
@@ -234,11 +310,69 @@
                 buttonElement.classList.toggle('saved', !!saved);
             };
 
-            const syncGlossarySaveButtons = () => {
-                if (!list) {
+            const saveDictionaryEntry = async (item, buttonElement) => {
+                if (!dictionaryEndpoint) {
+                    window.alert('辞書機能が利用できません。');
                     return;
                 }
-                const buttons = list.querySelectorAll('.glossary-save-button');
+                if (!buttonElement || buttonElement.disabled) {
+                    return;
+                }
+                const payload = {
+                    term: item.term || '',
+                    definition: item.definition || '',
+                    context: item.context || '',
+                };
+                if (!payload.term || !payload.definition) {
+                    window.alert('用語と解説が必要です。');
+                    return;
+                }
+                const previousLabel = buttonElement.textContent;
+                buttonElement.disabled = true;
+                buttonElement.textContent = '保存中…';
+                try {
+                    const response = await fetch(dictionaryEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || '辞書への保存に失敗しました。');
+                    }
+                    const savedItem = data.item || {
+                        ...payload,
+                        saved_at: new Date().toISOString(),
+                        lecture_id: panel.dataset.lectureId,
+                        dictionary_id: '',
+                    };
+                    setDictionaryTerm(savedItem);
+                    updateSaveButtonState(buttonElement, true);
+                    await refreshDictionary();
+                } catch (err) {
+                    window.alert(err.message || '辞書への保存に失敗しました。');
+                    buttonElement.disabled = false;
+                    buttonElement.textContent = previousLabel;
+                    return;
+                }
+                buttonElement.textContent = '保存済み';
+            };
+
+            const deleteDictionaryEntry = async (dictionaryId) => {
+                const response = await fetch(`/dictionary/${encodeURIComponent(dictionaryId)}`, {
+                    method: 'DELETE',
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || '辞書の削除に失敗しました。');
+                }
+                return data;
+            };
+
+            const syncGlossarySaveButtons = () => {
+                const buttons = panel.querySelectorAll('[data-dictionary-key]');
                 buttons.forEach((buttonElement) => {
                     const key = buttonElement.dataset.dictionaryKey || '';
                     const saved = key ? savedDictionaryTerms.has(key) : false;
@@ -365,6 +499,171 @@
                 }
             };
 
+            const getChatState = (category) => chatStates.get(getChatCategory(category));
+
+            const updateChatClearButton = (category) => {
+                const state = getChatState(category);
+                if (!state || !state.clearButton) {
+                    return;
+                }
+                state.clearButton.disabled = state.currentMessages.length === 0;
+            };
+
+            const setChatError = (category, message) => {
+                const state = getChatState(category);
+                if (!state || !state.error) {
+                    return;
+                }
+                if (message) {
+                    state.error.textContent = message;
+                    state.error.classList.remove('hidden');
+                } else {
+                    state.error.textContent = '';
+                    state.error.classList.add('hidden');
+                }
+            };
+
+            const renderChatMessages = (category, messages) => {
+                const state = getChatState(category);
+                if (!state || !state.messagesList) {
+                    return;
+                }
+                state.currentMessages = Array.isArray(messages) ? messages : [];
+                state.messagesList.innerHTML = '';
+                state.currentMessages.forEach((message) => {
+                    const li = document.createElement('li');
+                    li.className = `chat-message chat-${message.role}`;
+                    const bubble = document.createElement('div');
+                    bubble.className = 'chat-bubble';
+
+                    if (category === 'term' && message.role === 'assistant') {
+                        bubble.classList.add('chat-bubble-term');
+                        let items = [];
+                        try {
+                            const parsed = JSON.parse(message.content || '[]');
+                            if (Array.isArray(parsed)) {
+                                items = parsed;
+                            }
+                        } catch (err) {
+                            console.warn('用語解説メッセージの解析に失敗しました', err);
+                        }
+                        if (items.length === 0) {
+                            bubble.textContent = message.content || '解説を表示できませんでした。';
+                        } else {
+                            items.forEach((item) => {
+                                const normalized = {
+                                    term: item.term || '',
+                                    definition: item.definition || '',
+                                    context: item.context || '',
+                                };
+                                const entry = document.createElement('div');
+                                entry.className = 'term-explanation-item';
+
+                                const term = document.createElement('strong');
+                                term.textContent = normalized.term || '（用語不明）';
+                                entry.appendChild(term);
+
+                                if (normalized.definition) {
+                                    const definition = document.createElement('p');
+                                    definition.textContent = normalized.definition;
+                                    entry.appendChild(definition);
+                                }
+
+                                if (normalized.context) {
+                                    const context = document.createElement('span');
+                                    context.className = 'term-explanation-context';
+                                    context.textContent = normalized.context;
+                                    entry.appendChild(context);
+                                }
+
+                                if (dictionaryEndpoint) {
+                                    const actions = document.createElement('div');
+                                    actions.className = 'term-explanation-actions';
+                                    const saveButton = document.createElement('button');
+                                    saveButton.type = 'button';
+                                    saveButton.className = 'term-explanation-save-button';
+                                    const dictionaryKey = makeDictionaryKey(normalized.term, normalized.definition);
+                                    saveButton.dataset.dictionaryKey = dictionaryKey;
+                                    updateSaveButtonState(saveButton, isTermSaved(normalized.term, normalized.definition));
+                                    saveButton.addEventListener('click', async () => {
+                                        await saveDictionaryEntry(normalized, saveButton);
+                                    });
+                                    actions.appendChild(saveButton);
+                                    entry.appendChild(actions);
+                                }
+
+                                bubble.appendChild(entry);
+                            });
+                        }
+                    } else {
+                        bubble.textContent = message.content;
+                    }
+
+                    li.appendChild(bubble);
+                    if (message.created_at) {
+                        const meta = document.createElement('span');
+                        meta.className = 'chat-timestamp';
+                        meta.textContent = formatDateTime(message.created_at);
+                        li.appendChild(meta);
+                    }
+                    state.messagesList.appendChild(li);
+                });
+                state.messagesList.scrollTop = state.messagesList.scrollHeight;
+                updateChatClearButton(category);
+                if (category === 'term') {
+                    syncGlossarySaveButtons();
+                }
+            };
+
+            const loadChatMessages = async (category, force = false) => {
+                const normalized = getChatCategory(category);
+                const state = getChatState(normalized);
+                if (!chatEndpoint || !state || (state.loaded && !force)) {
+                    return;
+                }
+                try {
+                    const url = new URL(chatEndpoint, window.location.origin);
+                    url.searchParams.set('category', normalized);
+                    const response = await fetch(url, { method: 'GET' });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || 'チャット履歴の取得に失敗しました。');
+                    }
+                    renderChatMessages(normalized, Array.isArray(data.messages) ? data.messages : []);
+                    setChatError(normalized, '');
+                    state.loaded = true;
+                } catch (err) {
+                    setChatError(normalized, err.message || 'チャット履歴の取得に失敗しました。');
+                }
+            };
+
+            const activateChatCategory = (category) => {
+                const normalized = getChatCategory(category || activeChatCategory);
+                if (!chatStates.has(normalized)) {
+                    return;
+                }
+                activeChatCategory = normalized;
+                chatTabButtons.forEach((button) => {
+                    const buttonCategory = getChatCategory(button.dataset.category);
+                    button.classList.toggle('active', buttonCategory === normalized);
+                });
+                chatPanes.forEach((pane) => {
+                    const paneCategory = getChatCategory(pane.dataset.category);
+                    pane.classList.toggle('active', paneCategory === normalized);
+                });
+                loadChatMessages(normalized);
+                const state = getChatState(normalized);
+                if (state && state.input) {
+                    window.setTimeout(() => state.input.focus(), 0);
+                }
+            };
+
+            chatTabButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    activateChatCategory(button.dataset.category);
+                });
+            });
+
             const renderItems = (items) => {
                 list.innerHTML = '';
                 items.forEach((item) => {
@@ -402,48 +701,14 @@
                         saveButton.dataset.dictionaryKey = dictionaryKey;
                         updateSaveButtonState(saveButton, isTermSaved(item.term, item.definition));
                         saveButton.addEventListener('click', async () => {
-                            if (!dictionaryEndpoint) {
-                                window.alert('辞書機能が利用できません。');
-                                return;
-                            }
-                            if (saveButton.disabled) {
-                                return;
-                            }
-                            const previousLabel = saveButton.textContent;
-                            saveButton.disabled = true;
-                            saveButton.textContent = '保存中…';
-                            try {
-                                const response = await fetch(dictionaryEndpoint, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                    },
-                                    body: JSON.stringify({
-                                        term: item.term || '',
-                                        definition: item.definition || '',
-                                        context: item.context || '',
-                                    }),
-                                });
-                                const data = await response.json();
-                                if (!response.ok) {
-                                    throw new Error(data.error || '辞書への保存に失敗しました。');
-                                }
-                                const savedItem = data.item || {
+                            await saveDictionaryEntry(
+                                {
                                     term: item.term || '',
                                     definition: item.definition || '',
                                     context: item.context || '',
-                                    saved_at: new Date().toISOString(),
-                                };
-                                setDictionaryTerm(savedItem);
-                                updateSaveButtonState(saveButton, true);
-                                await refreshDictionary();
-                                saveButton.textContent = '保存済み';
-                            } catch (err) {
-                                saveButton.disabled = false;
-                                saveButton.textContent = previousLabel;
-                                window.alert(err.message || '辞書への保存に失敗しました。');
-                                return;
-                            }
+                                },
+                                saveButton,
+                            );
                         });
                         actions.appendChild(saveButton);
                         li.appendChild(actions);
@@ -501,6 +766,39 @@
                         meta.textContent = `保存日時: ${formatDateTime(item.saved_at)}`;
                         li.appendChild(meta);
                     }
+
+                    const actions = document.createElement('div');
+                    actions.className = 'dictionary-item-actions';
+
+                    const deleteButton = document.createElement('button');
+                    deleteButton.type = 'button';
+                    deleteButton.className = 'dictionary-delete-button';
+                    deleteButton.textContent = '削除';
+                    deleteButton.addEventListener('click', async () => {
+                        if (!item.dictionary_id) {
+                            window.alert('この用語のIDを取得できませんでした。');
+                            return;
+                        }
+                        if (!window.confirm('この用語を辞書から削除しますか？')) {
+                            return;
+                        }
+                        const previousLabel = deleteButton.textContent;
+                        deleteButton.disabled = true;
+                        deleteButton.textContent = '削除中...';
+                        try {
+                            await deleteDictionaryEntry(item.dictionary_id);
+                            removeDictionaryTerm(item.term, item.definition);
+                            await refreshDictionary();
+                        } catch (err) {
+                            deleteButton.disabled = false;
+                            deleteButton.textContent = previousLabel;
+                            window.alert(err.message || '辞書の削除に失敗しました。');
+                            return;
+                        }
+                    });
+
+                    actions.appendChild(deleteButton);
+                    li.appendChild(actions);
 
                     dictionaryList.appendChild(li);
                 });
@@ -593,6 +891,9 @@
                 showPlaceholder('専門用語を生成するとここに表示されます。');
             }
             refreshDictionary();
+            if (chatStates.size > 0) {
+                activateChatCategory(activeChatCategory);
+            }
 
             const activateTab = (target) => {
                 tabs.forEach((tab) => {
@@ -601,6 +902,9 @@
                 tabContents.forEach((content) => {
                     content.classList.toggle('active', content.dataset.content === target);
                 });
+                if (target === 'chat') {
+                    activateChatCategory(activeChatCategory);
+                }
             };
 
             tabs.forEach((tab) => {
@@ -867,6 +1171,80 @@
                     }
                 });
             }
+
+            chatStates.forEach((state, category) => {
+                if (state.form && state.input) {
+                    state.form.addEventListener('submit', async (event) => {
+                        event.preventDefault();
+                        if (!chatEndpoint || state.sending) {
+                            return;
+                        }
+                        const message = (state.input.value || '').trim();
+                        if (!message) {
+                            setChatError(category, 'メッセージを入力してください。');
+                            return;
+                        }
+                        state.sending = true;
+                        setChatError(category, '送信中...');
+                        try {
+                            const response = await fetch(chatEndpoint, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({ message, category }),
+                            });
+                            const data = await response.json();
+                            if (!response.ok) {
+                                throw new Error(data.error || 'メッセージの送信に失敗しました。');
+                            }
+                            renderChatMessages(category, Array.isArray(data.messages) ? data.messages : []);
+                            state.input.value = '';
+                            setChatError(category, '');
+                            state.loaded = true;
+                        } catch (err) {
+                            setChatError(category, err.message || 'メッセージの送信に失敗しました。');
+                        } finally {
+                            state.sending = false;
+                        }
+                    });
+                }
+
+                if (state.clearButton) {
+                    state.clearButton.addEventListener('click', async () => {
+                        if (!chatEndpoint || state.clearing || state.sending) {
+                            return;
+                        }
+                        const confirmed = window.confirm('チャット履歴を削除しますか？');
+                        if (!confirmed) {
+                            return;
+                        }
+                        state.clearing = true;
+                        const previousLabel = state.clearButton.textContent;
+                        state.clearButton.textContent = '削除中...';
+                        state.clearButton.disabled = true;
+                        try {
+                            const url = new URL(chatEndpoint, window.location.origin);
+                            url.searchParams.set('category', category);
+                            const response = await fetch(url, { method: 'DELETE' });
+                            const data = await response.json();
+                            if (!response.ok) {
+                                throw new Error(data.error || 'チャット履歴の削除に失敗しました。');
+                            }
+                            renderChatMessages(category, Array.isArray(data.messages) ? data.messages : []);
+                            setChatError(category, '');
+                            state.loaded = true;
+                        } catch (err) {
+                            setChatError(category, err.message || 'チャット履歴の削除に失敗しました。');
+                        } finally {
+                            state.clearing = false;
+                            state.clearButton.textContent = previousLabel;
+                            state.clearButton.disabled = false;
+                            updateChatClearButton(category);
+                        }
+                    });
+                }
+            });
         })();
     </script>
 </body>

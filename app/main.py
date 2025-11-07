@@ -12,16 +12,20 @@ from app.db import (
     delete_pdf_record,
     get_all_pdfs,
     get_glossary_cache,
+    list_chat_messages,
     list_glossary_dictionary,
     list_note_images,
     get_note_for_lecture,
     get_pdf_by_id,
     insert_pdf,
     insert_note_image,
+    insert_chat_message,
+    delete_chat_messages,
     upsert_glossary_cache,
     upsert_glossary_dictionary_item,
     upsert_note_for_lecture,
     update_pdf_filename,
+    delete_glossary_dictionary_item,
 )
 from flask import (
     flash,
@@ -50,6 +54,8 @@ UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "pdfs")
 NOTE_IMAGE_DIR = os.path.join(app.root_path, "static", "uploads", "note_images")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "models/gemini-2.0-flash")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+
+CHAT_CATEGORIES = {"free", "term"}
 
 if genai and GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
@@ -141,6 +147,85 @@ def _generate_glossary(content: str) -> List[Dict[str, Any]]:
             "term": "解析失敗",
             "definition": "Gemini API の応答をJSONとして解釈できませんでした。",
             "context": text.strip()[:500],
+        }
+    ]
+
+
+def _generate_chat_reply(history: List[Dict[str, str]], user_message: str) -> str:
+    if not genai or not GOOGLE_API_KEY:
+        return "API キーが設定されていないため、チャット機能を利用できません。"
+
+    conversation_text = []
+    for message in history[-10:]:
+        role_label = "ユーザー" if message["role"] == "user" else "アシスタント"
+        conversation_text.append(f"{role_label}: {message['content']}")
+
+    conversation_text.append("アシスタント:")
+
+    prompt = (
+        "あなたは大学講義の内容を補助する優しいチューターです。学習者の質問に答え、"
+        "必要に応じて要約や具体例を挙げてください。難しい数式や図は言葉で説明し、"
+        "回答は日本語で行ってください。\n\n"
+        + "\n".join(conversation_text)
+    )
+
+    model = genai.GenerativeModel(GEMINI_MODEL)
+    response = model.generate_content(prompt)
+    reply = (response.text or "").strip()
+    if not reply:
+        reply = "申し訳ありません、適切な回答を生成できませんでした。別の表現で質問してみてください。"
+    return reply
+
+
+def _generate_term_explanation(term: str) -> List[Dict[str, Any]]:
+    if not genai or not GOOGLE_API_KEY:
+        return [
+            {
+                "term": term,
+                "definition": "APIキーが設定されていないため、解説を生成できません。",
+                "context": None,
+            }
+        ]
+
+    prompt = (
+        "あなたは大学講義の専門用語辞典を作成するアシスタントです。" "以下の用語について、講義資料の学習者にも分かりやすい解説を作成してください。"
+        "応答は必ず JSON 配列のみとし、各要素は {\"term\": \"用語\", \"definition\": \"説明\", \"context\": \"補足説明\"} の形式にしてください。"
+        "必要に応じて複数の関連用語を含めても構いませんが、必ず配列形式を守ってください。"
+        "用語: "
+        f"{term}"
+    )
+
+    model = genai.GenerativeModel(GEMINI_MODEL)
+    response = model.generate_content(prompt)
+    text = (response.text or "").strip()
+
+    candidate = text
+    fence_match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        candidate = fence_match.group(1).strip()
+
+    if not candidate:
+        candidate = text
+
+    try:
+        data = json.loads(candidate)
+        if isinstance(data, list):
+            return data
+    except json.JSONDecodeError:
+        bracket_match = re.search(r"\[[\s\S]*\]", candidate)
+        if bracket_match:
+            try:
+                data = json.loads(bracket_match.group(0))
+                if isinstance(data, list):
+                    return data
+            except json.JSONDecodeError:
+                pass
+
+    return [
+        {
+            "term": term,
+            "definition": text[:400] if text else "解説を生成できませんでした。",
+            "context": None,
         }
     ]
 
@@ -375,6 +460,78 @@ def note_api(lecture_id: str):
     return jsonify({"status": "ok"})
 
 
+@app.route("/lectures/<lecture_id>/chat", methods=["GET", "POST", "DELETE"])
+def chat_api(lecture_id: str):
+    pdf = get_pdf_by_id(lecture_id)
+    if not pdf:
+        return jsonify({"error": "資料が見つかりませんでした。"}), 404
+
+    if request.method == "DELETE":
+        category_param = (request.args.get("category") or "").strip().lower()
+        category = category_param if category_param in CHAT_CATEGORIES else None
+        delete_chat_messages(lecture_id, category=category)
+        deleted_category = category or "all"
+        messages = list_chat_messages(lecture_id, category=category)
+        return jsonify({"messages": messages, "status": "cleared", "category": deleted_category})
+
+    if request.method == "GET":
+        category_param = (request.args.get("category") or "free").strip().lower()
+        category = category_param if category_param in CHAT_CATEGORIES else "free"
+        messages = list_chat_messages(lecture_id, category=category)
+        return jsonify({"messages": messages, "category": category})
+
+    payload = request.get_json(silent=True) or {}
+    user_message = (payload.get("message") or "").strip()
+    category = (payload.get("category") or "free").strip().lower()
+    if category not in CHAT_CATEGORIES:
+        return jsonify({"error": "不正なチャットカテゴリです。"}), 400
+    if not user_message:
+        return jsonify({"error": "メッセージを入力してください。"}), 400
+
+    created_at = datetime.now()
+    user_message_id = uuid.uuid4().hex
+    insert_chat_message(lecture_id, user_message_id, "user", user_message, created_at, category=category)
+
+    assistant_reply: str
+    reply_items: List[Dict[str, Any]] | None = None
+
+    if category == "term":
+        try:
+            items = _generate_term_explanation(user_message)
+        except Exception as err:  # pragma: no cover - 想定外エラー
+            items = [
+                {
+                    "term": user_message,
+                    "definition": f"解説生成中にエラーが発生しました: {err}",
+                    "context": None,
+                }
+            ]
+        reply_items = items
+        assistant_reply = json.dumps(items, ensure_ascii=False)
+    else:
+        history = list_chat_messages(lecture_id, category=category)
+        try:
+            assistant_reply = _generate_chat_reply(history, user_message)
+        except Exception as err:  # pragma: no cover - 想定外エラー
+            assistant_reply = f"回答生成中にエラーが発生しました: {err}"
+
+    assistant_message_id = uuid.uuid4().hex
+    insert_chat_message(
+        lecture_id,
+        assistant_message_id,
+        "assistant",
+        assistant_reply,
+        datetime.now(),
+        category=category,
+    )
+
+    messages = list_chat_messages(lecture_id, category=category)
+    response_payload: Dict[str, Any] = {"messages": messages, "reply": assistant_reply, "category": category}
+    if reply_items is not None:
+        response_payload["reply_items"] = reply_items
+    return jsonify(response_payload)
+
+
 @app.route("/lectures/<lecture_id>/note/images", methods=["GET", "POST"])
 def note_images_api(lecture_id: str):
     pdf = get_pdf_by_id(lecture_id)
@@ -425,3 +582,11 @@ def note_images_api(lecture_id: str):
 def dictionary_page():
     entries = list_glossary_dictionary()
     return render_template("dictionary.html", entries=entries)
+
+
+@app.route("/dictionary/<dictionary_id>", methods=["DELETE"])
+def delete_dictionary_item(dictionary_id: str):
+    deleted = delete_glossary_dictionary_item(dictionary_id)
+    if not deleted:
+        return jsonify({"error": "指定された用語が見つかりませんでした。"}), 404
+    return jsonify({"status": "deleted", "dictionary_id": dictionary_id})

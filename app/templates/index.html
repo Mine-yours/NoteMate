@@ -41,10 +41,18 @@
         </section>
 
         <section class="list-section">
+            <div class="dictionary-cta">
+                <div class="dictionary-cta-text">
+                    <span class="dictionary-cta-title">保存した用語</span>
+                    <span class="dictionary-cta-description">辞書に保存した用語をまとめて確認できます。</span>
+                </div>
+                <a href="{{ url_for('dictionary_page') }}" class="dictionary-button">
+                    <span class="dictionary-button-icon">📚</span>
+                    <span class="dictionary-button-label">保存した用語を見る</span>
+                </a>
+            </div>
             <h2>アップロード済みの資料</h2>
-            <p class="dictionary-hint">
-                <a href="{{ url_for('dictionary_page') }}" class="text-link">📚 保存した用語を見る</a>
-            </p>
+            
             {% if pdfs %}
                 <table class="pdf-table">
                     <thead>
