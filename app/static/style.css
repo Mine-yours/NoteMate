@@ -338,6 +338,47 @@ input[type="file"] {
     margin-bottom: 16px;
 }
 
+.glossary-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    background: rgba(15, 39, 66, 0.05);
+    border-radius: 999px;
+    padding: 4px;
+    gap: 4px;
+}
+
+.tab-button {
+    border: none;
+    background: transparent;
+    color: rgba(15, 39, 66, 0.65);
+    font-weight: 600;
+    padding: 10px 0;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.tab-button.active {
+    background: #0f2742;
+    color: #ffffff;
+}
+
+.tab-content {
+    display: none;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+.tab-content.active {
+    display: flex;
+}
+
+.glossary-content {
+    overflow: hidden;
+}
+
 .glossary-status {
     min-height: 24px;
     font-size: 14px;
@@ -396,6 +437,38 @@ input[type="file"] {
     display: none;
 }
 
+.notes-label {
+    font-size: 14px;
+    color: rgba(15, 39, 66, 0.75);
+}
+
+.notes-editor {
+    flex: 1 1 auto;
+    min-height: 160px;
+    resize: vertical;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(15, 39, 66, 0.2);
+    font-size: 14px;
+    color: #0f2742;
+    font-family: inherit;
+    line-height: 1.6;
+    background: rgba(15, 39, 66, 0.03);
+}
+
+.notes-editor:focus {
+    outline: none;
+    border-color: #0f2742;
+    box-shadow: 0 0 0 3px rgba(15, 39, 66, 0.12);
+    background: #ffffff;
+}
+
+.notes-status {
+    font-size: 12px;
+    color: rgba(15, 39, 66, 0.6);
+    min-height: 20px;
+}
+
 @media (max-width: 720px) {
     .container {
         padding: 26px;
@@ -444,8 +517,12 @@ input[type="file"] {
         overflow: visible;
     }
 
-    .glossary-list {
+    .tab-content {
         overflow: visible;
+    }
+
+    .notes-editor {
+        min-height: 140px;
     }
 }
 

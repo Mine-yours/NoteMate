@@ -31,26 +31,40 @@
 
             <aside class="glossary-panel" data-endpoint="{{ url_for('glossary', lecture_id=pdf.lecture_id) }}" data-lecture-id="{{ pdf.lecture_id }}">
                 <div class="glossary-header">
-                    <h2>専門用語の解説</h2>
-                    <p class="glossary-hint">AIにより重要な用語を抽出して解説します。</p>
+                    <h2>学習サポート</h2>
+                    <p class="glossary-hint">AI解説と自分用メモを切り替えて活用できます。</p>
                 </div>
-                {% if page_count > 0 %}
-                    <label class="glossary-page-picker">
-                        <span>対象ページ</span>
-                        <select class="glossary-page-select">
-                            <option value="all">資料全体</option>
-                            {% for num in range(1, page_count + 1) %}
-                                <option value="{{ num }}">ページ {{ num }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                {% else %}
-                    <p class="glossary-page-warning">ページ情報を取得できませんでした。全体を解析します。</p>
-                {% endif %}
-                <button type="button" class="link-button glossary-button">専門用語を生成</button>
-                <div class="glossary-status hidden">解析中...</div>
-                <ul class="glossary-list"></ul>
-                <p class="glossary-error hidden"></p>
+
+                <div class="glossary-tabs">
+                    <button type="button" class="tab-button active" data-target="glossary">専門用語</button>
+                    <button type="button" class="tab-button" data-target="notes">ノート</button>
+                </div>
+
+                <div class="tab-content glossary-content active" data-content="glossary">
+                    {% if page_count > 0 %}
+                        <label class="glossary-page-picker">
+                            <span>対象ページ</span>
+                            <select class="glossary-page-select">
+                                <option value="all">資料全体</option>
+                                {% for num in range(1, page_count + 1) %}
+                                    <option value="{{ num }}">ページ {{ num }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    {% else %}
+                        <p class="glossary-page-warning">ページ情報を取得できませんでした。全体を解析します。</p>
+                    {% endif %}
+                    <button type="button" class="link-button glossary-button">専門用語を生成</button>
+                    <div class="glossary-status hidden">解析中...</div>
+                    <ul class="glossary-list"></ul>
+                    <p class="glossary-error hidden"></p>
+                </div>
+
+                <div class="tab-content notes-content" data-content="notes">
+                    <label class="notes-label" for="notes-editor">講義ノート</label>
+                    <textarea id="notes-editor" class="notes-editor" placeholder="気づきや疑問点をメモしておきましょう。"></textarea>
+                    <p class="notes-status" aria-live="polite"></p>
+                </div>
             </aside>
         </div>
     </div>
@@ -69,6 +83,11 @@
             const lectureId = panel.dataset.lectureId;
             const cacheKeyPrefix = `NoteMate:glossary:${lectureId}:`;
             const cache = {};
+            const tabs = panel.querySelectorAll('.tab-button');
+            const tabContents = panel.querySelectorAll('.tab-content');
+            const notesEditor = panel.querySelector('.notes-editor');
+            const notesStatus = panel.querySelector('.notes-status');
+            const notesStorageKey = `NoteMate:notes:${lectureId}`;
 
             const toggle = (element, show) => {
                 element.classList.toggle('hidden', !show);
@@ -198,6 +217,50 @@
             const initialKey = getActiveKey();
             if (!tryRenderCache(initialKey)) {
                 showPlaceholder('専門用語を生成するとここに表示されます。');
+            }
+
+            const activateTab = (target) => {
+                tabs.forEach((tab) => {
+                    tab.classList.toggle('active', tab.dataset.target === target);
+                });
+                tabContents.forEach((content) => {
+                    content.classList.toggle('active', content.dataset.content === target);
+                });
+            };
+
+            tabs.forEach((tab) => {
+                tab.addEventListener('click', () => {
+                    activateTab(tab.dataset.target);
+                });
+            });
+
+            if (notesEditor) {
+                try {
+                    const saved = window.localStorage.getItem(notesStorageKey);
+                    if (saved) {
+                        notesEditor.value = saved;
+                        notesStatus.textContent = '保存済みのノートを読み込みました。';
+                    }
+                } catch (err) {
+                    console.warn('ノートの読み込みに失敗しました', err);
+                }
+
+                let saveTimer = null;
+                notesEditor.addEventListener('input', () => {
+                    if (saveTimer) {
+                        window.clearTimeout(saveTimer);
+                    }
+                    notesStatus.textContent = '保存中…';
+                    saveTimer = window.setTimeout(() => {
+                        try {
+                            window.localStorage.setItem(notesStorageKey, notesEditor.value);
+                            notesStatus.textContent = 'ノートを保存しました。';
+                        } catch (err) {
+                            notesStatus.textContent = 'ノートの保存に失敗しました。';
+                            console.warn('ノートの保存に失敗しました', err);
+                        }
+                    }, 400);
+                });
             }
         })();
     </script>
