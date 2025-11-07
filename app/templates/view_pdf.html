@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ pdf.original_filename }} | NoteMate</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/NoteMate_logo.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/NoteMate_logo.png') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="page-header">
+            <div class="brand brand-viewer">
+                <img src="{{ url_for('static', filename='images/NoteMate_logo_text_trans.png') }}" alt="NoteMateロゴ" class="brand-logo">
+            </div>
+            <h1>{{ pdf.original_filename }}</h1>
+            <p class="subtitle">アップロード日時: {{ pdf.uploaded_at | replace('T', ' ') }}</p>
+        </header>
+
+        <div class="viewer-actions">
+            <a class="link-button" href="{{ url_for('download_pdf', lecture_id=pdf.lecture_id) }}">ダウンロード</a>
+            <a class="text-link" href="{{ url_for('index') }}">一覧に戻る</a>
+        </div>
+
+        <div class="viewer-layout">
+            <section class="pdf-viewer">
+                <iframe src="{{ pdf_url }}" title="{{ pdf.original_filename }}" width="100%" height="1000" allow="fullscreen"></iframe>
+                <p class="viewer-note">表示されない場合はダウンロードして閲覧してください。</p>
+            </section>
+
+            <aside class="glossary-panel" data-endpoint="{{ url_for('glossary', lecture_id=pdf.lecture_id) }}" data-lecture-id="{{ pdf.lecture_id }}">
+                <div class="glossary-header">
+                    <h2>専門用語の解説</h2>
+                    <p class="glossary-hint">AIにより重要な用語を抽出して解説します。</p>
+                </div>
+                {% if page_count > 0 %}
+                    <label class="glossary-page-picker">
+                        <span>対象ページ</span>
+                        <select class="glossary-page-select">
+                            <option value="all">資料全体</option>
+                            {% for num in range(1, page_count + 1) %}
+                                <option value="{{ num }}">ページ {{ num }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                {% else %}
+                    <p class="glossary-page-warning">ページ情報を取得できませんでした。全体を解析します。</p>
+                {% endif %}
+                <button type="button" class="link-button glossary-button">専門用語を生成</button>
+                <div class="glossary-status hidden">解析中...</div>
+                <ul class="glossary-list"></ul>
+                <p class="glossary-error hidden"></p>
+            </aside>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const panel = document.querySelector('.glossary-panel');
+            if (!panel) return;
+
+            const endpoint = panel.dataset.endpoint;
+            const button = panel.querySelector('.glossary-button');
+            const status = panel.querySelector('.glossary-status');
+            const list = panel.querySelector('.glossary-list');
+            const error = panel.querySelector('.glossary-error');
+            const pageSelect = panel.querySelector('.glossary-page-select');
+            const lectureId = panel.dataset.lectureId;
+            const cacheKeyPrefix = `NoteMate:glossary:${lectureId}:`;
+            const cache = {};
+
+            const toggle = (element, show) => {
+                element.classList.toggle('hidden', !show);
+            };
+
+            const getActiveKey = () => {
+                if (!pageSelect) {
+                    return 'all';
+                }
+                return pageSelect.value || 'all';
+            };
+
+            const loadCacheFromStorage = (key) => {
+                try {
+                    const stored = window.localStorage.getItem(cacheKeyPrefix + key);
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        if (Array.isArray(parsed)) {
+                            cache[key] = parsed;
+                        }
+                    }
+                } catch (err) {
+                    console.warn('専門用語の保存データ読み込みに失敗しました', err);
+                }
+            };
+
+            const persistCache = (key, items) => {
+                try {
+                    window.localStorage.setItem(cacheKeyPrefix + key, JSON.stringify(items));
+                } catch (err) {
+                    console.warn('専門用語の保存に失敗しました', err);
+                }
+            };
+
+            const renderItems = (items) => {
+                list.innerHTML = '';
+                items.forEach((item) => {
+                    const li = document.createElement('li');
+                    const term = document.createElement('strong');
+                    term.textContent = item.term || '（不明な用語）';
+                    li.appendChild(term);
+
+                    if (item.definition) {
+                        const definition = document.createElement('p');
+                        definition.textContent = item.definition;
+                        li.appendChild(definition);
+                    }
+
+                    if (item.context) {
+                        const context = document.createElement('span');
+                        context.textContent = item.context;
+                        li.appendChild(context);
+                    }
+
+                    list.appendChild(li);
+                });
+            };
+
+            const showPlaceholder = (message) => {
+                list.innerHTML = '';
+                const li = document.createElement('li');
+                li.className = 'glossary-placeholder';
+                li.textContent = message;
+                list.appendChild(li);
+            };
+
+            const tryRenderCache = (key) => {
+                if (!(key in cache)) {
+                    loadCacheFromStorage(key);
+                }
+                const cached = cache[key];
+                if (cached) {
+                    if (cached.length > 0) {
+                        renderItems(cached);
+                    } else {
+                        showPlaceholder('抽出された専門用語はありませんでした。');
+                    }
+                    return true;
+                }
+                return false;
+            };
+
+            if (pageSelect) {
+                pageSelect.addEventListener('change', () => {
+                    const key = getActiveKey();
+                    if (!tryRenderCache(key)) {
+                        showPlaceholder('選択したページの専門用語はまだ生成されていません。');
+                    }
+                });
+            }
+
+            button.addEventListener('click', async () => {
+                const key = getActiveKey();
+                toggle(status, true);
+                toggle(error, false);
+                const previousContent = list.innerHTML;
+
+                try {
+                    const url = new URL(endpoint, window.location.origin);
+                    if (pageSelect) {
+                        url.searchParams.set('page', pageSelect.value || 'all');
+                    }
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || 'AI解析に失敗しました。');
+                    }
+                    if (Array.isArray(data.items) && data.items.length > 0) {
+                        cache[key] = data.items;
+                        persistCache(key, data.items);
+                        renderItems(data.items);
+                    } else {
+                        cache[key] = [];
+                        persistCache(key, []);
+                        showPlaceholder('抽出された専門用語はありませんでした。');
+                    }
+                } catch (err) {
+                    list.innerHTML = previousContent;
+                    error.textContent = err.message;
+                    toggle(error, true);
+                } finally {
+                    toggle(status, false);
+                }
+            });
+
+            // 初期表示
+            const initialKey = getActiveKey();
+            if (!tryRenderCache(initialKey)) {
+                showPlaceholder('専門用語を生成するとここに表示されます。');
+            }
+        })();
+    </script>
+</body>
+</html>
+

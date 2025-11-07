@@ -1,0 +1,90 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoteMate | 講義PDFビューワー</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/NoteMate_logo.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/NoteMate_logo.png') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="page-header">
+            <div class="brand">
+                <img src="{{ url_for('static', filename='images/NoteMate_logo_text_trans.png') }}" alt="NoteMateロゴ" class="brand-logo">
+                <h1>NoteMate</h1>
+
+            </div>
+            <p class="subtitle">講義資料をアップロードして、すぐに閲覧できます。</p>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=True) %}
+            {% if messages %}
+                <ul class="flash-messages">
+                    {% for category, message in messages %}
+                        <li class="flash-message flash-{{ category }}">{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+
+        <section class="upload-section">
+            <h2>講義資料をアップロード</h2>
+            <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" class="upload-form">
+                <label for="pdf" class="upload-label">PDFファイルを選択</label>
+                <input id="pdf" name="pdf" type="file" accept="application/pdf" required>
+                <button type="submit">アップロード</button>
+            </form>
+            <p class="upload-note">※ PDF形式のみアップロード可能です。</p>
+        </section>
+
+        <section class="list-section">
+            <h2>アップロード済みの資料</h2>
+            {% if pdfs %}
+                <table class="pdf-table">
+                    <thead>
+                        <tr>
+                            <th>ファイル名</th>
+                            <th>アップロード日時</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pdf in pdfs %}
+                            <tr>
+                                <td>{{ pdf.original_filename }}</td>
+                                <td>{{ pdf.uploaded_at | replace('T', ' ') }}</td>
+                                <td class="actions-cell">
+                                    <a href="{{ url_for('view_pdf', lecture_id=pdf.lecture_id) }}" class="link-button">開く</a>
+                                    <a href="{{ url_for('download_pdf', lecture_id=pdf.lecture_id) }}" class="download-button">ダウンロード</a>
+                                    <form action="{{ url_for('delete_pdf', lecture_id=pdf.lecture_id) }}" method="post" class="delete-form">
+                                        <button type="submit" class="danger-button">削除</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="empty-state">まだ講義資料がアップロードされていません。</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <script>
+        (function () {
+            const forms = document.querySelectorAll('.delete-form');
+            forms.forEach((form) => {
+                form.addEventListener('submit', (event) => {
+                    const confirmed = window.confirm('この講義資料を削除しますか？この操作は元に戻せません。');
+                    if (!confirmed) {
+                        event.preventDefault();
+                    }
+                });
+            });
+        })();
+    </script>
+</body>
+</html>
