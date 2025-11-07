@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import json
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -16,6 +17,28 @@ def create_table() -> None:
             original_filename TEXT NOT NULL,
             stored_filename   TEXT NOT NULL,
             uploaded_at       TEXT NOT NULL
+        )
+        """
+    )
+
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS lecture_notes (
+            lecture_id  TEXT PRIMARY KEY,
+            content     TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        )
+        """
+    )
+
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS lecture_glossary_cache (
+            lecture_id  TEXT NOT NULL,
+            page_key    TEXT NOT NULL,
+            items_json  TEXT NOT NULL,
+            updated_at  TEXT NOT NULL,
+            PRIMARY KEY (lecture_id, page_key)
         )
         """
     )
@@ -83,6 +106,83 @@ def get_pdf_by_id(lecture_id: str) -> Optional[Dict[str, str]]:
         'stored_filename': row[2],
         'uploaded_at': row[3],
     }
+
+
+def get_note_for_lecture(lecture_id: str) -> Optional[Dict[str, str]]:
+    con = sqlite3.connect(DATABASE)
+    cursor = con.cursor()
+    cursor.execute(
+        """
+        SELECT content, updated_at
+        FROM lecture_notes
+        WHERE lecture_id = ?
+        """,
+        (lecture_id,),
+    )
+    row = cursor.fetchone()
+    con.close()
+    if not row:
+        return None
+    return {
+        'content': row[0],
+        'updated_at': row[1],
+    }
+
+
+def upsert_note_for_lecture(lecture_id: str, content: str, updated_at: datetime) -> None:
+    con = sqlite3.connect(DATABASE)
+    con.execute(
+        """
+        INSERT INTO lecture_notes (lecture_id, content, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(lecture_id)
+        DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at
+        """,
+        (lecture_id, content, updated_at.isoformat()),
+    )
+    con.commit()
+    con.close()
+
+
+def get_glossary_cache(lecture_id: str, page_key: str) -> Optional[Dict[str, str]]:
+    con = sqlite3.connect(DATABASE)
+    cursor = con.cursor()
+    cursor.execute(
+        """
+        SELECT items_json, updated_at
+        FROM lecture_glossary_cache
+        WHERE lecture_id = ? AND page_key = ?
+        """,
+        (lecture_id, page_key),
+    )
+    row = cursor.fetchone()
+    con.close()
+    if not row:
+        return None
+    try:
+        items = json.loads(row[0])
+    except json.JSONDecodeError:
+        items = []
+    return {
+        'items': items,
+        'updated_at': row[1],
+    }
+
+
+def upsert_glossary_cache(lecture_id: str, page_key: str, items: List[Dict[str, str]], updated_at: datetime) -> None:
+    con = sqlite3.connect(DATABASE)
+    payload = json.dumps(items, ensure_ascii=False)
+    con.execute(
+        """
+        INSERT INTO lecture_glossary_cache (lecture_id, page_key, items_json, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(lecture_id, page_key)
+        DO UPDATE SET items_json = excluded.items_json, updated_at = excluded.updated_at
+        """,
+        (lecture_id, page_key, payload, updated_at.isoformat()),
+    )
+    con.commit()
+    con.close()
 
 
 def delete_pdf_record(lecture_id: str) -> None:

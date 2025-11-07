@@ -8,7 +8,16 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from app import app
-from app.db import delete_pdf_record, get_all_pdfs, get_pdf_by_id, insert_pdf
+from app.db import (
+    delete_pdf_record,
+    get_all_pdfs,
+    get_glossary_cache,
+    get_note_for_lecture,
+    get_pdf_by_id,
+    insert_pdf,
+    upsert_glossary_cache,
+    upsert_note_for_lecture,
+)
 from flask import (
     flash,
     jsonify,
@@ -233,21 +242,51 @@ def glossary(lecture_id: str):
 
     page_param = request.args.get("page")
     page_index: int | None = None
+    page_key = "all"
     if page_param and page_param.lower() != "all":
         try:
             page_index = int(page_param) - 1
+            page_key = str(page_index + 1)
         except ValueError:
             return jsonify({"error": "ページ指定が不正です。"}), 400
+
+    refresh = request.args.get("refresh")
+    if not refresh:
+        cached = get_glossary_cache(lecture_id, page_key)
+        if cached:
+            return jsonify({"items": cached["items"], "cached": True, "updated_at": cached["updated_at"]})
 
     try:
         content = _extract_pdf_text(file_path, page=page_index)
         if not content.strip():
             return jsonify({"error": "PDFからテキストを抽出できませんでした。"}), 500
         glossary_items = _generate_glossary(content)
-        return jsonify({"items": glossary_items})
+        upsert_glossary_cache(lecture_id, page_key, glossary_items, datetime.now())
+        return jsonify({"items": glossary_items, "cached": False})
     except RuntimeError as err:
         return jsonify({"error": str(err)}), 500
     except ValueError as err:
         return jsonify({"error": str(err)}), 400
     except Exception as err:  # pragma: no cover - 想定外エラー
         return jsonify({"error": f"AI解析中にエラーが発生しました: {err}"}), 500
+
+
+@app.route("/lectures/<lecture_id>/note", methods=["GET", "POST"])
+def note_api(lecture_id: str):
+    pdf = get_pdf_by_id(lecture_id)
+    if not pdf:
+        return jsonify({"error": "資料が見つかりませんでした。"}), 404
+
+    if request.method == "GET":
+        stored = get_note_for_lecture(lecture_id)
+        if not stored:
+            return jsonify({"content": "", "updated_at": None})
+        return jsonify(stored)
+
+    payload = request.get_json(silent=True) or {}
+    content = payload.get("content")
+    if content is None:
+        return jsonify({"error": "content が指定されていません。"}), 400
+
+    upsert_note_for_lecture(lecture_id, str(content), datetime.now())
+    return jsonify({"status": "ok"})

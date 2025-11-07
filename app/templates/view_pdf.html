@@ -29,7 +29,7 @@
                 <p class="viewer-note">表示されない場合はダウンロードして閲覧してください。</p>
             </section>
 
-            <aside class="glossary-panel" data-endpoint="{{ url_for('glossary', lecture_id=pdf.lecture_id) }}" data-lecture-id="{{ pdf.lecture_id }}">
+            <aside class="glossary-panel" data-endpoint="{{ url_for('glossary', lecture_id=pdf.lecture_id) }}" data-note-endpoint="{{ url_for('note_api', lecture_id=pdf.lecture_id) }}" data-lecture-id="{{ pdf.lecture_id }}">
                 <div class="glossary-header">
                     <h2>学習サポート</h2>
                     <p class="glossary-hint">AI解説と自分用メモを切り替えて活用できます。</p>
@@ -122,19 +122,17 @@
             if (!panel) return;
 
             const endpoint = panel.dataset.endpoint;
+            const noteEndpoint = panel.dataset.noteEndpoint;
             const button = panel.querySelector('.glossary-button');
             const status = panel.querySelector('.glossary-status');
             const list = panel.querySelector('.glossary-list');
             const error = panel.querySelector('.glossary-error');
             const pageSelect = panel.querySelector('.glossary-page-select');
-            const lectureId = panel.dataset.lectureId;
-            const cacheKeyPrefix = `NoteMate:glossary:${lectureId}:`;
             const cache = {};
             const tabs = panel.querySelectorAll('.tab-button');
             const tabContents = panel.querySelectorAll('.tab-content');
             const notesEditor = panel.querySelector('.notes-editor');
             const notesStatus = panel.querySelector('.notes-status');
-            const notesStorageKey = `NoteMate:notes:${lectureId}`;
             const notesToolbar = panel.querySelector('.notes-toolbar');
             const colorPicker = panel.querySelector('.notes-color-picker');
             const sizeSelect = panel.querySelector('.notes-size-select');
@@ -151,28 +149,6 @@
                     return 'all';
                 }
                 return pageSelect.value || 'all';
-            };
-
-            const loadCacheFromStorage = (key) => {
-                try {
-                    const stored = window.localStorage.getItem(cacheKeyPrefix + key);
-                    if (stored) {
-                        const parsed = JSON.parse(stored);
-                        if (Array.isArray(parsed)) {
-                            cache[key] = parsed;
-                        }
-                    }
-                } catch (err) {
-                    console.warn('専門用語の保存データ読み込みに失敗しました', err);
-                }
-            };
-
-            const persistCache = (key, items) => {
-                try {
-                    window.localStorage.setItem(cacheKeyPrefix + key, JSON.stringify(items));
-                } catch (err) {
-                    console.warn('専門用語の保存に失敗しました', err);
-                }
             };
 
             const renderMarkdown = (source) => {
@@ -237,9 +213,6 @@
             };
 
             const tryRenderCache = (key) => {
-                if (!(key in cache)) {
-                    loadCacheFromStorage(key);
-                }
                 const cached = cache[key];
                 if (cached) {
                     if (cached.length > 0) {
@@ -279,11 +252,9 @@
                     }
                     if (Array.isArray(data.items) && data.items.length > 0) {
                         cache[key] = data.items;
-                        persistCache(key, data.items);
                         renderItems(data.items);
                     } else {
                         cache[key] = [];
-                        persistCache(key, []);
                         showPlaceholder('抽出された専門用語はありませんでした。');
                     }
                 } catch (err) {
@@ -457,22 +428,52 @@
                     select.value = '';
                 });
 
-                try {
-                    const saved = window.localStorage.getItem(notesStorageKey);
-                    if (saved) {
-                        notesEditor.value = saved;
-                        notesStatus.textContent = '保存済みのノートを読み込みました。';
-                    } else {
-                        notesStatus.textContent = '';
+                const renderEmptyPreviewMessage = () => {
+                    if (notesPreviewBody) {
+                        notesPreviewBody.innerHTML = '<p class="notes-preview-empty">ノートを入力するとここにMarkdownプレビューが表示されます。</p>';
                     }
-                } catch (err) {
-                    console.warn('ノートの読み込みに失敗しました', err);
-                    notesStatus.textContent = 'ノートの読み込みに失敗しました。';
-                }
-                updateNotesPreview();
-                if (!notesEditor.value.trim()) {
-                    notesPreviewBody.innerHTML = '<p class="notes-preview-empty">ノートを入力するとここにMarkdownプレビューが表示されます。</p>';
-                }
+                };
+
+                const loadNoteFromServer = async () => {
+                    if (!noteEndpoint) {
+                        return;
+                    }
+                    try {
+                        const response = await fetch(noteEndpoint, { method: 'GET' });
+                        const data = await response.json();
+                        if (!response.ok) {
+                            throw new Error(data.error || 'ノートを取得できませんでした。');
+                        }
+                        notesEditor.value = data.content || '';
+                        notesStatus.textContent = data.updated_at ? `最終更新: ${data.updated_at}` : '';
+                    } catch (err) {
+                        console.warn('ノートの読み込みに失敗しました', err);
+                        notesStatus.textContent = 'ノートの読み込みに失敗しました。';
+                    }
+                    updateNotesPreview();
+                    if (!notesEditor.value.trim()) {
+                        renderEmptyPreviewMessage();
+                    }
+                };
+
+                const saveNoteToServer = async (content) => {
+                    if (!noteEndpoint) {
+                        return;
+                    }
+                    const response = await fetch(noteEndpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ content }),
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || 'ノートの保存に失敗しました。');
+                    }
+                };
+
+                loadNoteFromServer();
 
                 let saveTimer = null;
                 notesEditor.addEventListener('input', () => {
@@ -481,15 +482,15 @@
                     }
                     notesStatus.textContent = '保存中…';
                     updateNotesPreview();
-                    saveTimer = window.setTimeout(() => {
+                    saveTimer = window.setTimeout(async () => {
                         try {
-                            window.localStorage.setItem(notesStorageKey, notesEditor.value);
+                            await saveNoteToServer(notesEditor.value);
                             notesStatus.textContent = 'ノートを保存しました。';
                         } catch (err) {
-                            notesStatus.textContent = 'ノートの保存に失敗しました。';
-                            console.warn('ノートの保存に失敗しました', err);
+                            notesStatus.textContent = err.message || 'ノートの保存に失敗しました。';
+                            console.warn(err);
                         }
-                    }, 400);
+                    }, 500);
                 });
             }
         })();
