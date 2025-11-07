@@ -129,7 +129,7 @@ input[type="file"] {
     font-size: 15px;
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
-    box-shadow: 0 16px 30px rgba(12, 58, 112, 0.25);
+    box-shadow: none;
     letter-spacing: 0.03em;
 }
 
@@ -155,7 +155,7 @@ input[type="file"] {
     text-decoration: none;
     letter-spacing: 0.02em;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
-    box-shadow: 0 16px 30px rgba(37, 99, 235, 0.28);
+    box-shadow: none;
 }
 
 .download-button:hover {
@@ -177,7 +177,7 @@ input[type="file"] {
     font-size: 15px;
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
-    box-shadow: 0 16px 30px rgba(180, 35, 24, 0.28);
+    box-shadow: none;
     letter-spacing: 0.02em;
     display: inline-block;
 }
