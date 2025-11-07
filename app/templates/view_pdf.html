@@ -14,7 +14,10 @@
             <div class="brand brand-viewer">
                 <img src="{{ url_for('static', filename='images/NoteMate_logo_text_trans.png') }}" alt="NoteMateロゴ" class="brand-logo">
             </div>
-            <h1>{{ pdf.original_filename }}</h1>
+            <div class="viewer-title">
+                <button type="button" class="icon-button pdf-rename-button" data-endpoint="{{ url_for('rename_pdf', lecture_id=pdf.lecture_id) }}" data-current-name="{{ pdf.original_filename }}" title="名前を変更">✏️</button>
+                <h1 class="pdf-title"><span class="pdf-title-text">{{ pdf.original_filename }}</span></h1>
+            </div>
             <p class="subtitle">アップロード日時: {{ pdf.uploaded_at | replace('T', ' ') }}</p>
         </header>
 
@@ -118,6 +121,42 @@
 
     <script>
         (function () {
+            const headerRenameButton = document.querySelector('.pdf-rename-button');
+            const titleText = document.querySelector('.pdf-title-text');
+
+            const handleRename = async (button) => {
+                const endpoint = button.dataset.endpoint;
+                const currentName = button.dataset.currentName || (titleText ? titleText.textContent.trim() : '');
+                const newName = window.prompt('新しいファイル名を入力してください。', currentName);
+                if (!newName || newName.trim() === '' || newName.trim() === currentName) {
+                    return;
+                }
+                try {
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ original_filename: newName.trim() }),
+                    });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || 'ファイル名の変更に失敗しました。');
+                    }
+                    if (titleText) {
+                        titleText.textContent = data.original_filename;
+                    }
+                    button.dataset.currentName = data.original_filename;
+                    document.title = `${data.original_filename} | NoteMate`;
+                } catch (err) {
+                    window.alert(err.message || 'ファイル名の変更に失敗しました。');
+                }
+            };
+
+            if (headerRenameButton) {
+                headerRenameButton.addEventListener('click', () => handleRename(headerRenameButton));
+            }
+
             const panel = document.querySelector('.glossary-panel');
             if (!panel) return;
 
@@ -286,6 +325,7 @@
                     activateTab(tab.dataset.target);
                 });
             });
+
 
             subtabButtons.forEach((button) => {
                 button.addEventListener('click', () => {

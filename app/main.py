@@ -17,6 +17,7 @@ from app.db import (
     insert_pdf,
     upsert_glossary_cache,
     upsert_note_for_lecture,
+    update_pdf_filename,
 )
 from flask import (
     flash,
@@ -228,6 +229,30 @@ def delete_pdf(lecture_id: str):
         flash("講義資料を削除しました。", "success")
 
     return redirect(url_for("index"))
+
+
+@app.route("/lectures/<lecture_id>/rename", methods=["POST"])
+def rename_pdf(lecture_id: str):
+    pdf = get_pdf_by_id(lecture_id)
+    if not pdf:
+        return jsonify({"error": "資料が見つかりませんでした。"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    new_name = (payload.get("original_filename") or "").strip()
+
+    if not new_name:
+        return jsonify({"error": "新しいファイル名を入力してください。"}), 400
+
+    if len(new_name) > 255:
+        return jsonify({"error": "ファイル名は255文字以内で入力してください。"}), 400
+
+    _, ext = os.path.splitext(new_name)
+    if ext.lower() not in ALLOWED_EXTENSIONS:
+        allowed = ", ".join(sorted(ALLOWED_EXTENSIONS))
+        return jsonify({"error": f"ファイル名は次の拡張子で終わる必要があります: {allowed}"}), 400
+
+    update_pdf_filename(lecture_id, new_name)
+    return jsonify({"lecture_id": lecture_id, "original_filename": new_name})
 
 
 @app.route("/lectures/<lecture_id>/glossary")

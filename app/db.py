@@ -185,6 +185,20 @@ def upsert_glossary_cache(lecture_id: str, page_key: str, items: List[Dict[str, 
     con.close()
 
 
+def update_pdf_filename(lecture_id: str, new_name: str) -> None:
+    con = sqlite3.connect(DATABASE)
+    con.execute(
+        """
+        UPDATE lecture_files
+        SET original_filename = ?
+        WHERE lecture_id = ?
+        """,
+        (new_name, lecture_id),
+    )
+    con.commit()
+    con.close()
+
+
 def delete_pdf_record(lecture_id: str) -> None:
     con = sqlite3.connect(DATABASE)
     con.execute(
