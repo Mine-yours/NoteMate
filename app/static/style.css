@@ -281,11 +281,12 @@ input[type="file"] {
     padding: 24px;
     position: sticky;
     top: 32px;
-    max-height: calc(100vh - 96px);
+    height: calc(100vh - 96px);
     display: flex;
     flex-direction: column;
     gap: 16px;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .glossary-header h2 {
@@ -440,11 +441,149 @@ input[type="file"] {
 .notes-label {
     font-size: 14px;
     color: rgba(15, 39, 66, 0.75);
+    font-weight: 600;
+}
+
+.notes-subtabs {
+    display: inline-flex;
+    border: 1px solid rgba(15, 39, 66, 0.12);
+    border-radius: 999px;
+    padding: 4px;
+    margin-bottom: 18px;
+    background: rgba(15, 39, 66, 0.05);
+    gap: 6px;
+}
+
+.notes-subtab-button {
+    border: none;
+    background: transparent;
+    color: rgba(15, 39, 66, 0.6);
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+    flex: 1 1 0;
+    text-align: center;
+}
+
+.notes-subtab-button.active {
+    background: #0f2742;
+    color: #ffffff;
+}
+
+.notes-pane {
+    display: none;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.notes-pane.active {
+    display: flex;
+}
+
+.notes-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.notes-toolbar-group {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.notes-field {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.notes-preview-container {
+    border: 1px solid rgba(15, 39, 66, 0.15);
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 16px;
+    box-shadow: 0 16px 30px rgba(15, 39, 66, 0.08);
+}
+
+.notes-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.notes-preview-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(15, 39, 66, 0.8);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.notes-preview-body {
+    font-size: 14px;
+    color: #0f2742;
+    line-height: 1.7;
+    overflow-y: auto;
+    max-height: 280px;
+}
+
+.notes-preview-body pre {
+    background: rgba(15, 39, 66, 0.08);
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+}
+
+.notes-preview-body code {
+    background: rgba(15, 39, 66, 0.08);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-family: 'Fira Code', 'Courier New', monospace;
+}
+
+.notes-preview-body ul,
+.notes-preview-body ol {
+    margin-left: 18px;
+}
+
+.notes-tool {
+    border: 1px solid rgba(15, 39, 66, 0.15);
+    background: #ffffff;
+    color: #0f2742;
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.notes-tool:hover {
+    background: #0f2742;
+    color: #ffffff;
+    box-shadow: 0 12px 20px rgba(15, 39, 66, 0.12);
+}
+
+.notes-tool:active {
+    transform: translateY(1px);
+}
+
+.notes-color-control,
+.notes-size-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: rgba(15, 39, 66, 0.7);
 }
 
 .notes-editor {
     flex: 1 1 auto;
-    min-height: 400px;
+    min-height: 200px;
     resize: vertical;
     padding: 14px 16px;
     border-radius: 12px;
@@ -467,6 +606,11 @@ input[type="file"] {
     font-size: 12px;
     color: rgba(15, 39, 66, 0.6);
     min-height: 50px;
+}
+
+.notes-preview-empty {
+    color: rgba(15, 39, 66, 0.5);
+    font-size: 13px;
 }
 
 @media (max-width: 720px) {
@@ -513,7 +657,7 @@ input[type="file"] {
 
     .glossary-panel {
         position: static;
-        max-height: none;
+        height: auto;
         overflow: visible;
     }
 
@@ -523,6 +667,10 @@ input[type="file"] {
 
     .notes-editor {
         min-height: 140px;
+    }
+
+    .notes-preview-body {
+        max-height: none;
     }
 }
 

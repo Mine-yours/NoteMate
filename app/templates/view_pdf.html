@@ -61,13 +61,60 @@
                 </div>
 
                 <div class="tab-content notes-content" data-content="notes">
-                    <label class="notes-label" for="notes-editor">講義ノート</label>
-                    <textarea id="notes-editor" class="notes-editor" placeholder="気づきや疑問点をメモしておきましょう。"></textarea>
-                    <p class="notes-status" aria-live="polite"></p>
+                    <div class="notes-subtabs">
+                        <button type="button" class="notes-subtab-button active" data-target="notes-editor-pane">Note</button>
+                        <button type="button" class="notes-subtab-button" data-target="notes-preview-pane">Preview</button>
+                    </div>
+                    <div class="notes-pane notes-pane-editor active" data-pane="notes-editor-pane">
+                        <label class="notes-label" for="notes-editor">講義ノート</label>
+                        <div class="notes-toolbar">
+                            <div class="notes-toolbar-group">
+                                <button type="button" class="notes-tool" data-md="bold" title="太字">B</button>
+                                <button type="button" class="notes-tool" data-md="italic" title="斜体">I</button>
+                                <button type="button" class="notes-tool" data-md="underline" title="下線">U</button>
+                                <button type="button" class="notes-tool" data-md="highlight" title="ハイライト">HL</button>
+                            </div>
+                            <div class="notes-toolbar-group">
+                                <button type="button" class="notes-tool" data-block="heading1" title="見出し1">H1</button>
+                                <button type="button" class="notes-tool" data-block="heading2" title="見出し2">H2</button>
+                                <button type="button" class="notes-tool" data-block="unordered" title="箇条書き">•</button>
+                                <button type="button" class="notes-tool" data-block="ordered" title="番号付きリスト">1.</button>
+                            </div>
+                            <div class="notes-toolbar-group">
+                                <label class="notes-color-control" title="文字色">
+                                    <span>文字色</span>
+                                    <input type="color" class="notes-color-picker" value="#0f2742">
+                                </label>
+                                <label class="notes-size-control" title="文字サイズ">
+                                    <span>文字サイズ</span>
+                                    <select class="notes-size-select">
+                                        <option value="">標準</option>
+                                        <option value="14">14px</option>
+                                        <option value="16">16px</option>
+                                        <option value="18">18px</option>
+                                        <option value="20">20px</option>
+                                        <option value="24">24px</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+                        <textarea id="notes-editor" class="notes-editor" placeholder="気づきや疑問点をメモしておきましょう。"></textarea>
+                        <p class="notes-status" aria-live="polite"></p>
+                    </div>
+                    <div class="notes-pane notes-pane-preview" data-pane="notes-preview-pane">
+                        <div class="notes-preview-container">
+                            <div class="notes-preview-header">
+                                <span class="notes-preview-title">Preview</span>
+                            </div>
+                            <div class="notes-preview-body"></div>
+                        </div>
+                    </div>
                 </div>
             </aside>
         </div>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
     <script>
         (function () {
@@ -88,6 +135,12 @@
             const notesEditor = panel.querySelector('.notes-editor');
             const notesStatus = panel.querySelector('.notes-status');
             const notesStorageKey = `NoteMate:notes:${lectureId}`;
+            const notesToolbar = panel.querySelector('.notes-toolbar');
+            const colorPicker = panel.querySelector('.notes-color-picker');
+            const sizeSelect = panel.querySelector('.notes-size-select');
+            const notesPreviewBody = panel.querySelector('.notes-preview-body');
+            const subtabButtons = panel.querySelectorAll('.notes-subtab-button');
+            const notePanes = panel.querySelectorAll('.notes-pane');
 
             const toggle = (element, show) => {
                 element.classList.toggle('hidden', !show);
@@ -120,6 +173,35 @@
                 } catch (err) {
                     console.warn('専門用語の保存に失敗しました', err);
                 }
+            };
+
+            const renderMarkdown = (source) => {
+                if (!source) {
+                    return '';
+                }
+                try {
+                    if (window.marked && typeof window.marked.parse === 'function') {
+                        return window.marked.parse(source, { breaks: true });
+                    }
+                } catch (err) {
+                    console.warn('Markdownの解析に失敗しました', err);
+                }
+                return source.replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/\n/g, '<br>');
+            };
+
+            const updateNotesPreview = () => {
+                if (!notesPreviewBody || !notesEditor) {
+                    return;
+                }
+                const text = notesEditor.value || '';
+                if (!text.trim()) {
+                    notesPreviewBody.innerHTML = '<p class="notes-preview-empty">ノートを入力するとここにMarkdownプレビューが表示されます。</p>';
+                    return;
+                }
+                notesPreviewBody.innerHTML = renderMarkdown(text);
             };
 
             const renderItems = (items) => {
@@ -234,15 +316,162 @@
                 });
             });
 
+            subtabButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    const target = button.dataset.target;
+                    subtabButtons.forEach((b) => {
+                        b.classList.toggle('active', b === button);
+                    });
+                    notePanes.forEach((pane) => {
+                        pane.classList.toggle('active', pane.dataset.pane === target);
+                    });
+                    if (target === 'notes-preview-pane') {
+                        updateNotesPreview();
+                    }
+                });
+            });
+
             if (notesEditor) {
+                const surroundSelection = (before, after, placeholder = 'テキスト') => {
+                    const start = notesEditor.selectionStart;
+                    const end = notesEditor.selectionEnd;
+                    const value = notesEditor.value;
+                    const selected = value.slice(start, end) || placeholder;
+                    const replacement = `${before}${selected}${after}`;
+                    notesEditor.setRangeText(replacement, start, end, 'end');
+                    notesEditor.focus();
+                    notesEditor.dispatchEvent(new Event('input', { bubbles: true }));
+                };
+
+                notesToolbar?.addEventListener('click', (event) => {
+                    const button = event.target.closest('.notes-tool');
+                    if (!button) return;
+                    const command = button.dataset.md;
+                    const block = button.dataset.block;
+
+                    if (command) {
+                        switch (command) {
+                            case 'bold':
+                                surroundSelection('**', '**');
+                                break;
+                            case 'italic':
+                                surroundSelection('*', '*');
+                                break;
+                            case 'underline':
+                                surroundSelection('<u>', '</u>');
+                                break;
+                            case 'highlight':
+                                surroundSelection('<mark>', '</mark>');
+                                break;
+                            default:
+                        }
+                        return;
+                    }
+
+                    if (block) {
+                        applyBlockFormatting(block);
+                    }
+                });
+
+                const applySpanStyle = (styleString) => {
+                    const start = notesEditor.selectionStart;
+                    const end = notesEditor.selectionEnd;
+                    if (start === end) {
+                        notesStatus.textContent = '文字を選択してから適用してください。';
+                        return;
+                    }
+                    const value = notesEditor.value;
+                    const selected = value.slice(start, end);
+                    const replacement = `<span style="${styleString}">${selected}</span>`;
+                    notesEditor.setRangeText(replacement, start, end, 'end');
+                    notesEditor.focus();
+                    notesEditor.dispatchEvent(new Event('input', { bubbles: true }));
+                };
+
+                const applyBlockFormatting = (type) => {
+                    const value = notesEditor.value;
+                    const selectionStart = notesEditor.selectionStart;
+                    const selectionEnd = notesEditor.selectionEnd;
+                    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+                    let lineEnd = value.indexOf('\n', selectionEnd);
+                    if (lineEnd === -1) {
+                        lineEnd = value.length;
+                    }
+
+                    const originalBlock = value.slice(lineStart, lineEnd);
+                    const lines = originalBlock.split(/\r?\n/);
+                    let orderIndex = 1;
+
+                    const transformed = lines.map((line) => {
+                        if (!line.trim()) {
+                            return line;
+                        }
+
+                        const match = line.match(/^(\s*)(.*)$/);
+                        const indent = match ? match[1] : '';
+                        let content = match ? match[2] : line;
+
+                        switch (type) {
+                            case 'heading1': {
+                                content = content.replace(/^#{1,6}\s+/, '');
+                                return `${indent}# ${content.trim()}`;
+                            }
+                            case 'heading2': {
+                                content = content.replace(/^#{1,6}\s+/, '');
+                                return `${indent}## ${content.trim()}`;
+                            }
+                            case 'unordered': {
+                                content = content.replace(/^[-*+]\s+/, '');
+                                return `${indent}- ${content.trim()}`;
+                            }
+                            case 'ordered': {
+                                content = content.replace(/^\d+\.\s+/, '');
+                                return `${indent}${orderIndex++}. ${content.trim()}`;
+                            }
+                            default:
+                                return line;
+                        }
+                    });
+
+                    const replacement = transformed.join('\n');
+                    notesEditor.setRangeText(replacement, lineStart, lineEnd, 'end');
+                    notesEditor.selectionStart = lineStart;
+                    notesEditor.selectionEnd = lineStart + replacement.length;
+                    notesEditor.focus();
+                    notesEditor.dispatchEvent(new Event('input', { bubbles: true }));
+                };
+
+                colorPicker?.addEventListener('input', (event) => {
+                    const input = event.target;
+                    if (!(input instanceof HTMLInputElement)) return;
+                    if (!input.value) return;
+                    applySpanStyle(`color: ${input.value}`);
+                });
+
+                sizeSelect?.addEventListener('change', (event) => {
+                    const select = event.target;
+                    if (!(select instanceof HTMLSelectElement)) return;
+                    const size = select.value;
+                    if (!size) return;
+                    applySpanStyle(`font-size: ${size}px`);
+                    select.value = '';
+                });
+
                 try {
                     const saved = window.localStorage.getItem(notesStorageKey);
                     if (saved) {
                         notesEditor.value = saved;
                         notesStatus.textContent = '保存済みのノートを読み込みました。';
+                    } else {
+                        notesStatus.textContent = '';
                     }
                 } catch (err) {
                     console.warn('ノートの読み込みに失敗しました', err);
+                    notesStatus.textContent = 'ノートの読み込みに失敗しました。';
+                }
+                updateNotesPreview();
+                if (!notesEditor.value.trim()) {
+                    notesPreviewBody.innerHTML = '<p class="notes-preview-empty">ノートを入力するとここにMarkdownプレビューが表示されます。</p>';
                 }
 
                 let saveTimer = null;
@@ -251,6 +480,7 @@
                         window.clearTimeout(saveTimer);
                     }
                     notesStatus.textContent = '保存中…';
+                    updateNotesPreview();
                     saveTimer = window.setTimeout(() => {
                         try {
                             window.localStorage.setItem(notesStorageKey, notesEditor.value);
